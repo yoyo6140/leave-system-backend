@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any
 from pydantic import BaseModel
 
 
@@ -11,7 +11,7 @@ class ErrorDetail(BaseModel):
 class ApiResponse(BaseModel):
     success: bool
     data: Any = None
-    error: Optional[ErrorDetail] = None
+    error: ErrorDetail | None = None
 
 def ok(data: Any = None) -> dict:
     return {"success": True, "data": data}
@@ -30,13 +30,12 @@ class UserOut(BaseModel):
     username:   str
     name:       str
     role:       str
-    gender:     Optional[str] = None
-    id_number:  Optional[str] = None
-    hire_date:  Optional[str] = None
-    birth_date: Optional[str] = None
+    gender:     str | None = None
+    id_number:  str | None = None
+    hire_date:  str | None = None
+    birth_date: str | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 
 # ── Users ─────────────────────────────────────────────────────────────────────
@@ -46,18 +45,18 @@ class UserCreate(BaseModel):
     password:   str
     name:       str
     role:       str = "employee"
-    gender:     Optional[str] = None
-    id_number:  Optional[str] = None
-    hire_date:  Optional[str] = None
-    birth_date: Optional[str] = None
+    gender:     str | None = None
+    id_number:  str | None = None
+    hire_date:  str | None = None
+    birth_date: str | None = None
 
 class UserUpdate(BaseModel):
-    name:       Optional[str] = None
-    password:   Optional[str] = None
-    gender:     Optional[str] = None
-    id_number:  Optional[str] = None
-    hire_date:  Optional[str] = None
-    birth_date: Optional[str] = None
+    name:       str | None = None
+    password:   str | None = None
+    gender:     str | None = None
+    id_number:  str | None = None
+    hire_date:  str | None = None
+    birth_date: str | None = None
 
 
 # ── Leave Records ─────────────────────────────────────────────────────────────
@@ -74,14 +73,15 @@ class LeaveStatusUpdate(BaseModel):
 
 class LeaveOut(BaseModel):
     id:         str
-    username:   str
+    user_id:    int
     type:       str
     start_date: str
     end_date:   str
     hours:      int
     reason:     str
     status:     str
+    reviewer:   str | None = None
     created_at: str
+    updated_at: str | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
