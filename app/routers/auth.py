@@ -23,7 +23,7 @@ def swagger_token(form: OAuth2PasswordRequestForm = Depends(), db: Session = Dep
     "/login", 
     status_code=status.HTTP_200_OK,
     summary="使用者登入",
-    description="使用者登入後，返回 JWT Token",
+    description="使用者登入後，返回 JWT Token 與 使用者資料",
     response_model=LoginResponse,
     responses={401: {"model": LoginErrorResponse}},
     )
