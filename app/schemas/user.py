@@ -26,8 +26,9 @@ class UserCreate(BaseModel):
     birth_date: str
 
 class UserUpdate(BaseModel):
+    username:   str
     name:       str
-    password:   str
+    role:       str
     email:      str
     gender:     str
     id_number:  str
