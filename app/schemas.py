@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any
 from pydantic import BaseModel
 
@@ -81,7 +82,7 @@ class LeaveOut(BaseModel):
     reason:     str
     status:     str
     reviewer:   str | None = None
-    created_at: str
-    updated_at: str | None = None
+    created_at: datetime
+    updated_at: datetime | None = None
 
     model_config = {"from_attributes": True}
