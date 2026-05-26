@@ -4,7 +4,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import User
-from app.schemas import LoginRequest, LoginResponse, LoginErrorResponse, ok, fail
+from app.schemas import LoginRequest, LoginResponse, LoginErrorResponse, UserOut, ok, fail
 from app.auth import verify_password, create_token, get_current_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -47,4 +47,14 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
             "role":     user.role,
         }
     })
+
+
+@router.get(
+    "/me",
+    status_code=status.HTTP_200_OK,
+    response_model=UserOut,
+    summary="取得目前登入的使用者資料",
+)
+def get_me(current_user: User = Depends(get_current_user)):
+    return current_user
 
