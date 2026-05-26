@@ -4,7 +4,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import User
-from app.schemas import LoginRequest, ok, fail
+from app.schemas import LoginRequest, LoginResponse, LoginErrorResponse, UserOut, ok, fail
 from app.auth import verify_password, create_token, get_current_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -19,7 +19,14 @@ def swagger_token(form: OAuth2PasswordRequestForm = Depends(), db: Session = Dep
     return {"access_token": token, "token_type": "bearer"}
 
 
-@router.post("/login", status_code=status.HTTP_200_OK)
+@router.post(
+    "/login", 
+    status_code=status.HTTP_200_OK,
+    summary="使用者登入",
+    description="使用者登入後，返回 JWT Token 與 使用者資料",
+    response_model=LoginResponse,
+    responses={401: {"model": LoginErrorResponse}},
+    )
 def login(body: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == body.username).first()
 
@@ -40,4 +47,14 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
             "role":     user.role,
         }
     })
+
+
+@router.get(
+    "/me",
+    status_code=status.HTTP_200_OK,
+    response_model=UserOut,
+    summary="取得目前登入的使用者資料",
+)
+def get_me(current_user: User = Depends(get_current_user)):
+    return current_user
 
