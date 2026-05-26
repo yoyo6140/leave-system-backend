@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from app.database import engine, test_connection, Base
 from app import models  # 確保所有 model 都被載入
 from app.routers import auth
+from app.routers.leaves import router as leaves_router
 
 
 @asynccontextmanager
@@ -15,6 +16,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="請假系統 API", lifespan=lifespan)
 
 app.include_router(auth.router)
+app.include_router(leaves_router)
 
 
 @app.get("/")
