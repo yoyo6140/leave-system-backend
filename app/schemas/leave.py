@@ -9,6 +9,13 @@ class LeaveCreate(BaseModel):
     hours:      int
     reason:     str = ""
 
+class LeaveUpdate(BaseModel):
+    type:       str
+    start_date: str
+    end_date:   str
+    hours:      int
+    reason:     str = ""
+
 class LeaveStatusUpdate(BaseModel):
     status:   str
     reviewer: str | None = None

@@ -21,7 +21,7 @@ class LeaveRecord(Base):
     end_date:   Mapped[str]           = mapped_column(String,  nullable=False)
     hours:      Mapped[int]           = mapped_column(Integer, nullable=False)
     reason:     Mapped[str]           = mapped_column(String,  default="")
-    status:     Mapped[str]           = mapped_column(SAEnum("待審核", "已通過", "已拒絕", name="leave_status"), nullable=False, default="待審核")
+    status:     Mapped[str]           = mapped_column(SAEnum("待審核", "已通過", "已拒絕", "已取消", name="leave_status"), nullable=False, default="待審核")
     reviewer:   Mapped[str | None]           = mapped_column(String,  nullable=True)
     created_at: Mapped[datetime]             = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime | None]      = mapped_column(DateTime(timezone=True), nullable=True, onupdate=lambda: datetime.now(timezone.utc))

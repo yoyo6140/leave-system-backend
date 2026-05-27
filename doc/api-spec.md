@@ -373,7 +373,7 @@ OAuth2 Password Flow，供 Swagger UI「Authorize」按鈕使用，不列入一�
 
 #### `GET /leaves`
 
-查詢請假紀錄，支援狀態篩選與分頁。Admin 可查所有人的紀錄；一般員工只能查自己的。
+查詢請假紀錄列表，支援狀態篩選與分頁。Admin 可查所有人的紀錄；一般員工只能查自己的。
 
 - **權限**：需登入
 
@@ -412,6 +412,192 @@ OAuth2 Password Flow，供 Swagger UI「Authorize」按鈕使用，不列入一�
   }
 }
 ```
+
+---
+
+#### `GET /leaves/{id}`
+
+查詢單筆請假紀錄。Admin 可查任何人；員工只能查自己的。
+
+- **權限**：需登入
+- **路徑參數**：`id`（string / UUID）
+
+**成功回應** `200`：
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "user_id": 2,
+    "type": "特休",
+    "start_date": "2024-07-01",
+    "end_date": "2024-07-03",
+    "hours": 24,
+    "reason": "出遊",
+    "status": "待審核",
+    "reviewer": null,
+    "created_at": "2024-06-20T08:00:00Z",
+    "updated_at": null
+  }
+}
+```
+
+**失敗回應：**
+
+| HTTP | 錯誤碼 | 說明 |
+|------|--------|------|
+| 404 | `LEAVE_NOT_FOUND` | 找不到請假紀錄 |
+| 403 | `FORBIDDEN` | 無權限查看此紀錄 |
+
+---
+
+#### `POST /leaves`
+
+新增請假申請，初始狀態為「待審核」。
+
+- **權限**：需登入（為自己建立）
+
+**請求 Body：**
+
+```json
+{
+  "type": "特休",
+  "start_date": "2024-07-01",
+  "end_date": "2024-07-03",
+  "hours": 24,
+  "reason": "出遊"
+}
+```
+
+| 欄位 | 型別 | 必填 | 說明 |
+|------|------|------|------|
+| `type` | string | 是 | `特休` / `病假` / `事假` / `婚假` / `喪假` / `公假` / `其他` |
+| `start_date` | string | 是 | 開始日（`YYYY-MM-DD`） |
+| `end_date` | string | 是 | 結束日（`YYYY-MM-DD`） |
+| `hours` | integer | 是 | 時數（需 > 0） |
+| `reason` | string | 否 | 事由，預設空字串 |
+
+**成功回應** `201`：回傳新建立的 `LeaveOut` 物件（同上）
+
+**失敗回應：**
+
+| HTTP | 錯誤碼 | 說明 |
+|------|--------|------|
+| 422 | `INVALID_LEAVE_TYPE` | 假別不在允許清單內 |
+| 422 | `INVALID_HOURS` | 時數必須大於 0 |
+
+---
+
+#### `PUT /leaves/{id}`
+
+修改請假申請內容。員工只能修改狀態為「待審核」的自己的申請；Admin 可修改任何紀錄。
+
+- **權限**：需登入
+- **路徑參數**：`id`（string / UUID）
+
+**請求 Body：**（欄位與 POST 相同，無 `reason` 預設值，所有欄位皆必填）
+
+```json
+{
+  "type": "病假",
+  "start_date": "2024-07-01",
+  "end_date": "2024-07-02",
+  "hours": 16,
+  "reason": "感冒"
+}
+```
+
+**成功回應** `200`：回傳更新後的 `LeaveOut` 物件
+
+**失敗回應：**
+
+| HTTP | 錯誤碼 | 說明 |
+|------|--------|------|
+| 404 | `LEAVE_NOT_FOUND` | 找不到請假紀錄 |
+| 403 | `FORBIDDEN` | 無權限修改此紀錄 |
+| 409 | `LEAVE_NOT_EDITABLE` | 僅能修改「待審核」狀態的申請 |
+| 422 | `INVALID_LEAVE_TYPE` | 假別不在允許清單內 |
+| 422 | `INVALID_HOURS` | 時數必須大於 0 |
+
+---
+
+#### `PATCH /leaves/{id}/status`
+
+審核請假申請，更新狀態為「已通過」或「已拒絕」。
+
+- **權限**：`admin`
+- **路徑參數**：`id`（string / UUID）
+
+**請求 Body：**
+
+```json
+{
+  "status": "已通過",
+  "reviewer": "張主管"
+}
+```
+
+| 欄位 | 型別 | 必填 | 說明 |
+|------|------|------|------|
+| `status` | string | 是 | `待審核` / `已通過` / `已拒絕` |
+| `reviewer` | string | 否 | 審核人姓名 |
+
+**成功回應** `200`：回傳更新後的 `LeaveOut` 物件
+
+**失敗回應：**
+
+| HTTP | 錯誤碼 | 說明 |
+|------|--------|------|
+| 403 | `FORBIDDEN` | 僅 admin 可審核 |
+| 404 | `LEAVE_NOT_FOUND` | 找不到請假紀錄 |
+| 422 | `INVALID_STATUS` | 狀態值不合法 |
+
+---
+
+#### `PATCH /leaves/{id}/cancel`
+
+取消請假申請。員工可取消自己「待審核」或「已通過」的申請；Admin 可取消任何紀錄。
+
+- **權限**：需登入
+- **路徑參數**：`id`（string / UUID）
+
+**成功回應** `200`：回傳更新後的 `LeaveOut` 物件（`status` 變為 `已取消`）
+
+**失敗回應：**
+
+| HTTP | 錯誤碼 | 說明 |
+|------|--------|------|
+| 404 | `LEAVE_NOT_FOUND` | 找不到請假紀錄 |
+| 403 | `FORBIDDEN` | 無權限取消此紀錄 |
+| 409 | `LEAVE_NOT_CANCELABLE` | 僅能取消「待審核」或「已通過」的申請 |
+| 409 | `LEAVE_ALREADY_CANCELLED` | 此申請已取消 |
+
+---
+
+#### `DELETE /leaves/{id}`
+
+刪除請假申請。員工只能刪除狀態為「待審核」的自己的申請；Admin 可刪除任何紀錄。
+
+- **權限**：需登入
+- **路徑參數**：`id`（string / UUID）
+
+**成功回應** `200`：
+
+```json
+{
+  "success": true,
+  "data": { "message": "請假紀錄已刪除" }
+}
+```
+
+**失敗回應：**
+
+| HTTP | 錯誤碼 | 說明 |
+|------|--------|------|
+| 404 | `LEAVE_NOT_FOUND` | 找不到請假紀錄 |
+| 403 | `FORBIDDEN` | 無權限刪除此紀錄 |
+| 409 | `LEAVE_NOT_DELETABLE` | 僅能刪除「待審核」狀態的申請 |
 
 ---
 
@@ -461,3 +647,12 @@ OAuth2 Password Flow，供 Swagger UI「Authorize」按鈕使用，不列入一�
 | `EMAIL_EXISTS` | 409 | 信箱已被使用 |
 | `ID_NUMBER_EXISTS` | 409 | 身分證號碼已存在 |
 | `USER_NOT_FOUND` | 404 | 找不到指定使用者 |
+| `LEAVE_NOT_FOUND` | 404 | 找不到請假紀錄 |
+| `LEAVE_NOT_EDITABLE` | 409 | 僅能修改「待審核」狀態的申請 |
+| `LEAVE_NOT_DELETABLE` | 409 | 僅能刪除「待審核」狀態的申請 |
+| `LEAVE_NOT_CANCELABLE` | 409 | 僅能取消「待審核」或「已通過」的申請 |
+| `LEAVE_ALREADY_CANCELLED` | 409 | 此請假申請已取消 |
+| `INVALID_LEAVE_TYPE` | 422 | 假別不在允許清單內 |
+| `INVALID_HOURS` | 422 | 時數必須大於 0 |
+| `INVALID_STATUS` | 422 | 狀態值不合法 |
+| `FORBIDDEN` | 403 | 無權限執行此操作 |
