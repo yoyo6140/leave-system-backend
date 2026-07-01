@@ -31,17 +31,13 @@ def swagger_token(form: OAuth2PasswordRequestForm = Depends(), db: Session = Dep
     "/login",
     status_code=status.HTTP_200_OK,
     summary="使用者登入",
-    description="登入成功後以 httpOnly cookie 寫入 JWT，後續請求自動帶上 cookie 進行認證",
-    response_model=SuccessResponse,
+    description="登入成功後回傳 Bearer Token，前端存入 localStorage 並於後續請求帶上 Authorization header",
+    response_model=LoginResponse,
     responses={
-        200: {
-            "description": "登入成功",
-            "content": {"application/json": {"example": {"success": True}}},
-        },
         401: {"model": LoginErrorResponse},
     },
 )
-def login(body: LoginRequest, response: Response, db: Session = Depends(get_db)):
+def login(body: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == body.username).first()
 
     if not user or not verify_password(body.password, user.password):
@@ -52,16 +48,7 @@ def login(body: LoginRequest, response: Response, db: Session = Depends(get_db))
 
     token = create_token({"sub": str(user.id), "role": user.role})
 
-    response.set_cookie(
-        key      = "access_token",
-        value    = token,
-        httponly = True,
-        samesite = COOKIE_SAMESITE,
-        secure   = COOKIE_SECURE,
-        max_age  = EXPIRE_MIN * 60,
-    )
-
-    return {"success": True}
+    return {"success": True, "data": {"token": token}}
 
 
 @router.post(
