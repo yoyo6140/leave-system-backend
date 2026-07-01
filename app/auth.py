@@ -2,7 +2,7 @@ import os
 import bcrypt
 from datetime import datetime, timedelta, timezone
 from jose import jwt, JWTError
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from app.database import get_db
@@ -10,7 +10,10 @@ from app.database import get_db
 SECRET_KEY    = os.getenv("JWT_SECRET", "change-me")
 ALGORITHM     = "HS256"
 EXPIRE_MIN    = int(os.getenv("JWT_EXPIRE_MINUTES", 480))
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
+COOKIE_SECURE   = os.getenv("COOKIE_SECURE", "false").lower() == "true"
+COOKIE_SAMESITE = os.getenv("COOKIE_SAMESITE", "lax")
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token", auto_error=False)
 
 
 def verify_password(plain: str, hashed: str) -> bool:
@@ -23,8 +26,18 @@ def create_token(data: dict) -> str:
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+def get_current_user(
+    request: Request,
+    bearer_token: str | None = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+):
     from app.models import User
+
+    token = request.cookies.get("access_token") or bearer_token
+
+    if not token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="未登入")
+
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id: str = payload.get("sub")

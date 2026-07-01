@@ -1,11 +1,6 @@
 # 請假系統後端 API
 
-基於 **FastAPI** 的請假系統後端，提供使用者認證（JWT）與員工帳號管理。資料庫使用 **SQLAlchemy**，支援 SQLite（本機開發）與 PostgreSQL（Docker / 正式環境）。
-## 測試帳密
-admin 
-admin1234
-F12345
-11111
+基於 **FastAPI** 的請假系統後端，提供使用者認證（JWT）、員工帳號管理與請假紀錄查詢。資料庫使用 **SQLAlchemy**，支援 SQLite（本機開發）與 PostgreSQL（Docker / 正式環境）。
 
 ## 技術棧
 
@@ -27,8 +22,9 @@ leave-system-backend/
 │   ├── database.py         # 資料庫連線、Session、Base
 │   ├── models/             # User、LeaveRecord 等資料表
 │   ├── routers/
-│   │   ├── auth.py         # 登入相關 API
-│   │   └── users.py        # 員工帳號 API
+│   │   ├── auth.py         # 登入、token、me API
+│   │   ├── users.py        # 員工帳號 CRUD API
+│   │   └── leaves.py       # 請假紀錄查詢 API
 │   └── schemas/            # Pydantic 請求／回應模型
 ├── seed_admin.py           # 建立預設管理員帳號
 ├── reset_db.py             # 刪除並重建所有資料表（開發用）
@@ -167,6 +163,7 @@ Authorization: Bearer <token>
 |------|------|------|------|
 | `POST` | `/auth/login` | 登入，回傳 JWT 與使用者資訊 | 公開 |
 | `POST` | `/auth/token` | Swagger「Authorize」用（OAuth2 表單） | 公開 |
+| `GET`  | `/auth/me`    | 取得目前登入的使用者資料 | 需登入 |
 
 **登入請求範例：**
 
@@ -199,7 +196,11 @@ POST /auth/login
 
 | 方法 | 路徑 | 說明 | 權限 |
 |------|------|------|------|
-| `POST` | `/user` | 新增員工帳號 | `admin` |
+| `GET`    | `/users`      | 查詢員工列表（支援搜尋與分頁） | `admin` |
+| `POST`   | `/user`       | 新增員工帳號 | `admin` |
+| `GET`    | `/user/{id}`  | 查詢單一員工資料 | `admin` |
+| `PUT`    | `/user/{id}`  | 更新員工資料 | `admin` |
+| `DELETE` | `/user/{id}`  | 刪除員工帳號 | `admin` |
 
 **新增員工請求範例：**
 
@@ -218,10 +219,43 @@ POST /user
 }
 ```
 
+### 請假紀錄 (`/leaves`)
+
+| 方法 | 路徑 | 說明 | 權限 |
+|------|------|------|------|
+| `GET` | `/leaves` | 查詢請假紀錄（admin 可查所有人，員工只能查自己） | 需登入 |
+
+**Query 參數：**
+
+| 參數 | 說明 | 預設 |
+|------|------|------|
+| `status` | 篩選狀態：`待審核` / `已通過` / `已拒絕` | — |
+| `page` | 頁碼（≥1） | `1` |
+| `limit` | 每頁筆數（1–100） | `10` |
+
+**成功回應：**
+
+```json
+{
+  "success": true,
+  "data": {
+    "total": 20,
+    "page": 1,
+    "limit": 10,
+    "data": [ { ... } ]
+  }
+}
+```
+
+### 錯誤碼一覽
+
 | 錯誤碼 | HTTP | 說明 |
 |--------|------|------|
 | `INVALID_CREDENTIALS` | 401 | 登入帳密錯誤 |
 | `USERNAME_EXISTS` | 409 | 帳號已存在 |
+| `EMAIL_EXISTS` | 409 | 信箱已被使用 |
+| `ID_NUMBER_EXISTS` | 409 | 身分證號碼已存在 |
+| `USER_NOT_FOUND` | 404 | 找不到使用者 |
 
 ## 資料模型
 
@@ -256,8 +290,6 @@ POST /user
 | `status` | 待審核、已通過、已拒絕 |
 | `reviewer` | 審核人 |
 | `created_at` / `updated_at` | 建立／更新時間 |
-
-> 請假相關 API 尚在開發中；目前資料表已建立，路由尚未實作。
 
 ## 開發用腳本
 

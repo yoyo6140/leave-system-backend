@@ -11,6 +11,16 @@ class ApiResponse(BaseModel):
     data: Any = None
     error: ErrorDetail | None = None
 
+class SuccessResponse(BaseModel):
+    success: bool = True
+
+class MessageData(BaseModel):
+    message: str
+
+class MessageResponse(BaseModel):
+    success: bool = True
+    data: MessageData
+
 def ok(data: Any = None) -> dict:
     return {"success": True, "data": data}
 

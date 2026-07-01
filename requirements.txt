@@ -6,3 +6,6 @@ python-dotenv
 bcrypt
 python-jose[cryptography]
 python-multipart
+fastapi-mail
+pydantic[email]
+google-generativeai

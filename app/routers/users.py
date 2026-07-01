@@ -5,9 +5,21 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import User
 from app.auth import get_current_user
-from app.schemas import UserCreate, UserOut, UserUpdate, ok, fail
+from app.schemas import UserCreate, UserOut, UserUpdate, UserListResponse, UserResponse, MessageResponse, ok, fail
 
 router = APIRouter(tags=["user"])
+
+_USER_EXAMPLE = {
+    "id": 1,
+    "username": "john_doe",
+    "name": "John Doe",
+    "role": "employee",
+    "email": "john@example.com",
+    "gender": "male",
+    "id_number": "A123456789",
+    "hire_date": "2020-01-01",
+    "birth_date": "1990-05-15",
+}
 
 
 def require_admin(current_user=Depends(get_current_user)):
@@ -23,11 +35,30 @@ def require_admin(current_user=Depends(get_current_user)):
     status_code=status.HTTP_200_OK,
     summary="查詢員工列表",
     description="admin 限定，支援搜尋與分頁",
+    response_model=UserListResponse,
+    responses={
+        200: {
+            "description": "查詢成功",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": True,
+                        "data": {
+                            "total": 1,
+                            "page": 1,
+                            "limit": 10,
+                            "data": [_USER_EXAMPLE],
+                        },
+                    }
+                }
+            },
+        },
+    },
 )
 def get_users(
     search: str = Query(default="", description="搜尋姓名或帳號"),
     page: int   = Query(default=1,  ge=1, description="頁碼"),
-    limit: int  = Query(default=10, ge=1, le=100, description="每頁筆數"),
+    limit: int  = Query(default=10, ge=1, le=500, description="每頁筆數"),
     db: Session = Depends(get_db),
     _: User     = Depends(require_admin),
 ):
@@ -51,9 +82,15 @@ def get_users(
 @router.post(
     "/user",
     status_code=status.HTTP_201_CREATED,
-    response_model=UserOut,
+    response_model=UserResponse,
     summary="新增員工",
     description="admin 限定，新增一位員工帳號",
+    responses={
+        201: {
+            "description": "新增成功",
+            "content": {"application/json": {"example": {"success": True, "data": _USER_EXAMPLE}}},
+        },
+    },
 )
 def create_user(
     body: UserCreate,
@@ -83,15 +120,21 @@ def create_user(
     db.add(user)
     db.commit()
     db.refresh(user)
-    return user
+    return ok(UserOut.model_validate(user))
 
 
 @router.get(
     "/user/{id}",
     status_code=status.HTTP_200_OK,
-    response_model=UserOut,
+    response_model=UserResponse,
     summary="查詢員工資料",
     description="admin 限定，查詢一位員工的資料",
+    responses={
+        200: {
+            "description": "查詢成功",
+            "content": {"application/json": {"example": {"success": True, "data": _USER_EXAMPLE}}},
+        },
+    },
 )
 def get_user(
     id: int,
@@ -101,15 +144,21 @@ def get_user(
     user = db.query(User).filter(User.id == id).first()
     if not user:
         return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content=fail("USER_NOT_FOUND", "找不到使用者"))
-    return user
+    return ok(UserOut.model_validate(user))
 
 
 @router.put(
     "/user/{id}",
     status_code=status.HTTP_200_OK,
-    response_model=UserOut,
+    response_model=UserResponse,
     summary="更新員工資料",
     description="admin 限定，更新一位員工的資料",
+    responses={
+        200: {
+            "description": "更新成功",
+            "content": {"application/json": {"example": {"success": True, "data": _USER_EXAMPLE}}},
+        },
+    },
 )
 def update_user(
     id: int,
@@ -137,7 +186,7 @@ def update_user(
     user.birth_date = body.birth_date
     db.commit()
     db.refresh(user)
-    return user
+    return ok(UserOut.model_validate(user))
 
 
 @router.delete(
@@ -145,6 +194,20 @@ def update_user(
     status_code=status.HTTP_200_OK,
     summary="刪除員工帳號",
     description="admin 限定，刪除一位員工的帳號",
+    response_model=MessageResponse,
+    responses={
+        200: {
+            "description": "刪除成功",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": True,
+                        "data": {"message": "員工帳號已刪除"},
+                    }
+                }
+            },
+        },
+    },
 )
 def delete_user(
     id: int,
