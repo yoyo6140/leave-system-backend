@@ -9,6 +9,7 @@ from app.database import Base
 
 if TYPE_CHECKING:
     from .user import User
+    from .leave_status_log import LeaveStatusLog
 
 
 class LeaveRecord(Base):
@@ -26,4 +27,5 @@ class LeaveRecord(Base):
     created_at: Mapped[datetime]             = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime | None]      = mapped_column(DateTime(timezone=True), nullable=True, onupdate=lambda: datetime.now(timezone.utc))
 
-    user: Mapped[User] = relationship("User", back_populates="leave_records")
+    user:        Mapped[User]                  = relationship("User", back_populates="leave_records")
+    status_logs: Mapped[list[LeaveStatusLog]] = relationship("LeaveStatusLog", back_populates="leave", order_by="LeaveStatusLog.changed_at")

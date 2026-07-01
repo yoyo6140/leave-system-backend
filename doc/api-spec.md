@@ -91,6 +91,19 @@ Authorization: Bearer <token>
 - 預設有效期限：480 分鐘（可透過環境變數 `JWT_EXPIRE_MINUTES` 調整）
 - Token 失效或格式錯誤時回傳 `401 Unauthorized`
 
+### httpOnly Cookie
+
+登入後 token 以 `Set-Cookie` 寫入瀏覽器，**JavaScript 無法讀取**，防止 XSS 竊取。
+
+| Cookie 屬性 | 值 | 說明 |
+|-------------|-----|------|
+| `httpOnly` | `true` | JS 不可存取 |
+| `samesite` | `lax` | 防 CSRF，允許一般導頁帶上 cookie |
+| `secure` | 由 `COOKIE_SECURE` 決定 | 正式環境設 `true`，僅 HTTPS 傳送 |
+| `max_age` | 同 JWT 有效期 | 瀏覽器自動到期清除 |
+
+`get_current_user` 讀取順序：**cookie → Authorization Bearer header**（後者供 Swagger UI 使用）。
+
 ---
 
 ## API 端點
@@ -173,6 +186,81 @@ OAuth2 Password Flow，供 Swagger UI「Authorize」按鈕使用，不列入一�
 - **權限**：公開
 - **請求格式**：`application/x-www-form-urlencoded`（`username`、`password`）
 - **成功回應**：`{ "access_token": "<jwt>", "token_type": "bearer" }`
+
+---
+
+#### `POST /auth/forgot-password`
+
+申請密碼重設。若信箱存在，系統寄出含 token 的重設連結（30 分鐘有效）。為防止帳號枚舉攻擊，無論信箱是否存在，回應格式相同。
+
+- **權限**：公開
+
+**請求 Body：**
+
+```json
+{ "email": "user@example.com" }
+```
+
+**成功回應** `200`：
+
+```json
+{
+  "success": true,
+  "data": { "message": "若此信箱已註冊，您將收到密碼重設信件" }
+}
+```
+
+---
+
+#### `POST /auth/reset-password`
+
+使用信箱收到的 token 設定新密碼。Token 使用後立即失效。
+
+- **權限**：公開
+
+**請求 Body：**
+
+```json
+{
+  "token": "<reset-token>",
+  "new_password": "newPassword123"
+}
+```
+
+| 欄位 | 型別 | 必填 | 說明 |
+|------|------|------|------|
+| `token` | string | 是 | 信箱收到的重設 token |
+| `new_password` | string | 是 | 新密碼（明文，儲存時自動 bcrypt 雜湊） |
+
+**成功回應** `200`：
+
+```json
+{
+  "success": true,
+  "data": { "message": "密碼已成功重設，請重新登入" }
+}
+```
+
+**失敗回應：**
+
+| HTTP | 錯誤碼 | 說明 |
+|------|--------|------|
+| 400 | `INVALID_TOKEN` | token 不存在或已被使用 |
+| 400 | `TOKEN_EXPIRED` | token 已過期（超過 30 分鐘） |
+
+---
+
+#### `POST /auth/logout`
+
+登出，清除 httpOnly cookie。
+
+- **權限**：公開
+
+**成功回應** `200`：
+
+```json
+{ "success": true, "data": { "message": "已登出" } }
+```
 
 ---
 
@@ -555,6 +643,55 @@ OAuth2 Password Flow，供 Swagger UI「Authorize」按鈕使用，不列入一�
 
 ---
 
+#### `GET /leaves/{id}/status-logs`
+
+查詢單筆請假的狀態變更歷史，依時間升序排列。Admin 可查任何人；員工只能查自己的。
+
+- **權限**：需登入
+- **路徑參數**：`id`（string / UUID）
+
+**成功回應** `200`：
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "log-uuid-1",
+      "from_status": null,
+      "to_status": "待審核",
+      "changed_by": 2,
+      "changed_at": "2024-06-20T08:00:00Z"
+    },
+    {
+      "id": "log-uuid-2",
+      "from_status": "待審核",
+      "to_status": "已通過",
+      "changed_by": 1,
+      "changed_at": "2024-06-21T10:30:00Z"
+    },
+    {
+      "id": "log-uuid-3",
+      "from_status": "已通過",
+      "to_status": "已取消",
+      "changed_by": 2,
+      "changed_at": "2024-06-22T14:00:00Z"
+    }
+  ]
+}
+```
+
+> `from_status` 為 `null` 代表這是建立申請時的初始狀態紀錄。
+
+**失敗回應：**
+
+| HTTP | 錯誤碼 | 說明 |
+|------|--------|------|
+| 404 | `LEAVE_NOT_FOUND` | 找不到請假紀錄 |
+| 403 | `FORBIDDEN` | 無權限查看此紀錄 |
+
+---
+
 #### `PATCH /leaves/{id}/cancel`
 
 取消請假申請。員工可取消自己「待審核」或「已通過」的申請；Admin 可取消任何紀錄。
@@ -636,6 +773,19 @@ OAuth2 Password Flow，供 Swagger UI「Authorize」按鈕使用，不列入一�
 | `created_at` | datetime (tz) | 預設 UTC now | 建立時間 |
 | `updated_at` | datetime (tz) | Nullable、on update UTC now | 最後更新時間 |
 
+### `leave_status_logs` 資料表
+
+每次狀態變動插入一筆，完整保留歷史軌跡。
+
+| 欄位 | 型別 | 限制 | 說明 |
+|------|------|------|------|
+| `id` | string (UUID) | PK | 主鍵 |
+| `leave_id` | string (UUID) | FK → `leave_records.id`、Index | 對應的請假紀錄 |
+| `from_status` | string | Nullable | 變更前的狀態（建立時為 null） |
+| `to_status` | string | Not Null | 變更後的狀態 |
+| `changed_by` | integer | FK → `users.id`、Not Null | 操作者 |
+| `changed_at` | datetime (tz) | 預設 UTC now | 變更時間 |
+
 ---
 
 ## 錯誤碼一覽
@@ -643,6 +793,8 @@ OAuth2 Password Flow，供 Swagger UI「Authorize」按鈕使用，不列入一�
 | 錯誤碼 | HTTP | 說明 |
 |--------|------|------|
 | `INVALID_CREDENTIALS` | 401 | 帳號或密碼錯誤 |
+| `INVALID_TOKEN` | 400 | 重設 token 不存在或已被使用 |
+| `TOKEN_EXPIRED` | 400 | 重設 token 已過期 |
 | `USERNAME_EXISTS` | 409 | 帳號已存在或已被其他人使用 |
 | `EMAIL_EXISTS` | 409 | 信箱已被使用 |
 | `ID_NUMBER_EXISTS` | 409 | 身分證號碼已存在 |

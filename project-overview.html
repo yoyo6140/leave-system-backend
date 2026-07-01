@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>請假系統 Backend — 專案總覽</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      padding: 2rem 1.5rem 4rem;
+    }
+
+    h1 {
+      text-align: center;
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: .04em;
+      margin-bottom: .4rem;
+      background: linear-gradient(135deg, #60a5fa, #a78bfa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .subtitle {
+      text-align: center;
+      color: #64748b;
+      font-size: .9rem;
+      margin-bottom: 2.5rem;
+    }
+
+    /* ── Section ─────────────────────────────── */
+    section { margin-bottom: 3rem; }
+    section > h2 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: #94a3b8;
+      border-left: 4px solid #6366f1;
+      padding-left: .75rem;
+      margin-bottom: 1.25rem;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+    }
+
+    /* ── Card grid ───────────────────────────── */
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 1.25rem;
+    }
+    .card {
+      background: #1e2333;
+      border: 1px solid #2d3554;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: .6rem;
+      padding: .75rem 1rem;
+      background: #252d44;
+      border-bottom: 1px solid #2d3554;
+    }
+    .card-header .icon { font-size: 1.1rem; }
+    .card-header h3 { font-size: 1rem; font-weight: 600; color: #e2e8f0; }
+    .card-header .tablename {
+      margin-left: auto;
+      font-size: .72rem;
+      font-family: monospace;
+      color: #64748b;
+      background: #0f1117;
+      border: 1px solid #334155;
+      border-radius: 4px;
+      padding: .15rem .45rem;
+    }
+
+    /* ── Field table ─────────────────────────── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: .82rem;
+    }
+    thead tr { background: #1a2136; }
+    thead th {
+      text-align: left;
+      padding: .45rem .75rem;
+      color: #64748b;
+      font-weight: 600;
+      font-size: .72rem;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+    }
+    tbody tr { border-top: 1px solid #1e2a3a; }
+    tbody tr:hover { background: #1a2340; }
+    tbody td { padding: .45rem .75rem; vertical-align: middle; }
+    .col-name { font-family: monospace; color: #93c5fd; font-weight: 500; }
+    .col-type { font-family: monospace; color: #86efac; font-size: .78rem; }
+    .col-note { color: #94a3b8; font-size: .78rem; }
+
+    /* badges */
+    .badge {
+      display: inline-block;
+      font-size: .65rem;
+      font-weight: 700;
+      border-radius: 4px;
+      padding: .1rem .4rem;
+      letter-spacing: .04em;
+      vertical-align: middle;
+      margin-left: .25rem;
+    }
+    .badge-pk  { background: #7c3aed33; color: #a78bfa; border: 1px solid #7c3aed55; }
+    .badge-fk  { background: #0e7490aa; color: #67e8f9; border: 1px solid #0891b2; }
+    .badge-uni { background: #065f4622; color: #6ee7b7; border: 1px solid #065f46; }
+    .badge-idx { background: #78350f22; color: #fcd34d; border: 1px solid #78350f; }
+
+    /* ── API table ───────────────────────────── */
+    .api-table { width: 100%; border-collapse: collapse; font-size: .83rem; }
+    .api-table thead tr { background: #1a2136; }
+    .api-table thead th {
+      text-align: left;
+      padding: .5rem .8rem;
+      color: #64748b;
+      font-weight: 600;
+      font-size: .72rem;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+    }
+    .api-table tbody tr { border-top: 1px solid #1e2a3a; }
+    .api-table tbody tr:hover { background: #1a2340; }
+    .api-table tbody td { padding: .5rem .8rem; vertical-align: middle; }
+
+    .method {
+      display: inline-block;
+      font-size: .7rem;
+      font-weight: 700;
+      border-radius: 4px;
+      padding: .15rem .5rem;
+      min-width: 56px;
+      text-align: center;
+      font-family: monospace;
+    }
+    .GET    { background: #064e3b55; color: #6ee7b7; border: 1px solid #065f4680; }
+    .POST   { background: #1e3a5f55; color: #93c5fd; border: 1px solid #1d4ed880; }
+    .PUT    { background: #78350f44; color: #fcd34d; border: 1px solid #92400e80; }
+    .PATCH  { background: #581c8744; color: #d8b4fe; border: 1px solid #7e22ce80; }
+    .DELETE { background: #7f1d1d44; color: #fca5a5; border: 1px solid #991b1b80; }
+
+    .path { font-family: monospace; color: #e2e8f0; font-size: .82rem; }
+    .path .param { color: #fbbf24; }
+
+    .auth-badge {
+      font-size: .65rem;
+      border-radius: 4px;
+      padding: .1rem .35rem;
+      font-weight: 600;
+    }
+    .auth-admin    { background: #7c3aed22; color: #c4b5fd; border: 1px solid #7c3aed55; }
+    .auth-login    { background: #065f4622; color: #6ee7b7; border: 1px solid #065f4655; }
+    .auth-public   { background: #1e293b;   color: #64748b; border: 1px solid #334155; }
+
+    .desc { color: #94a3b8; font-size: .78rem; }
+
+    /* relation diagram */
+    .rel-box {
+      background: #1e2333;
+      border: 1px solid #2d3554;
+      border-radius: 12px;
+      padding: 1.25rem 1.5rem;
+      font-size: .82rem;
+      line-height: 1.9;
+    }
+    .rel-row { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin-bottom: .3rem; }
+    .tbl  { font-family: monospace; font-weight: 600; color: #93c5fd; }
+    .arr  { color: #475569; }
+    .rel-note { color: #64748b; font-size: .76rem; }
+
+    /* enum */
+    .enum-list { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .15rem; }
+    .enum-tag {
+      font-size: .68rem;
+      background: #1e293b;
+      border: 1px solid #334155;
+      color: #cbd5e1;
+      border-radius: 4px;
+      padding: .1rem .35rem;
+      font-family: monospace;
+    }
+  </style>
+</head>
+<body>
+
+<h1>請假系統 Backend</h1>
+<p class="subtitle">FastAPI · SQLAlchemy · PostgreSQL（AWS RDS）&nbsp;|&nbsp;專案結構總覽</p>
+
+<!-- ════════════════════════════════════════════
+     SECTION 1 — Database Tables
+═══════════════════════════════════════════════ -->
+<section>
+  <h2>🗄️ 資料表 (Database Tables)</h2>
+  <div class="card-grid">
+
+    <!-- users -->
+    <div class="card">
+      <div class="card-header">
+        <span class="icon">👤</span>
+        <h3>使用者</h3>
+        <span class="tablename">users</span>
+      </div>
+      <table>
+        <thead><tr><th>欄位</th><th>型別</th><th>說明</th></tr></thead>
+        <tbody>
+          <tr><td class="col-name">id <span class="badge badge-pk">PK</span></td><td class="col-type">Integer</td><td class="col-note">自動遞增主鍵</td></tr>
+          <tr><td class="col-name">username <span class="badge badge-uni">UNI</span></td><td class="col-type">String</td><td class="col-note">登入帳號（唯一）</td></tr>
+          <tr><td class="col-name">password</td><td class="col-type">String</td><td class="col-note">bcrypt 雜湊密碼</td></tr>
+          <tr><td class="col-name">name</td><td class="col-type">String</td><td class="col-note">姓名</td></tr>
+          <tr><td class="col-name">role</td><td class="col-type">Enum</td><td class="col-note">
+            <div class="enum-list">
+              <span class="enum-tag">admin</span>
+              <span class="enum-tag">employee</span>
+            </div>
+          </td></tr>
+          <tr><td class="col-name">email <span class="badge badge-uni">UNI</span></td><td class="col-type">String</td><td class="col-note">信箱（唯一）</td></tr>
+          <tr><td class="col-name">is_verified</td><td class="col-type">Boolean</td><td class="col-note">信箱是否已驗證</td></tr>
+          <tr><td class="col-name">gender</td><td class="col-type">Enum</td><td class="col-note">
+            <div class="enum-list">
+              <span class="enum-tag">男</span>
+              <span class="enum-tag">女</span>
+            </div>
+          </td></tr>
+          <tr><td class="col-name">id_number <span class="badge badge-uni">UNI</span></td><td class="col-type">String(10)</td><td class="col-note">身分證號碼</td></tr>
+          <tr><td class="col-name">hire_date</td><td class="col-type">String</td><td class="col-note">到職日期</td></tr>
+          <tr><td class="col-name">birth_date</td><td class="col-type">String</td><td class="col-note">出生日期</td></tr>
+          <tr><td class="col-name">created_at</td><td class="col-type">DateTime(tz)</td><td class="col-note">建立時間（UTC）</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- leave_records -->
+    <div class="card">
+      <div class="card-header">
+        <span class="icon">📋</span>
+        <h3>請假紀錄</h3>
+        <span class="tablename">leave_records</span>
+      </div>
+      <table>
+        <thead><tr><th>欄位</th><th>型別</th><th>說明</th></tr></thead>
+        <tbody>
+          <tr><td class="col-name">id <span class="badge badge-pk">PK</span></td><td class="col-type">String(UUID)</td><td class="col-note">UUID v4</td></tr>
+          <tr><td class="col-name">user_id <span class="badge badge-fk">FK</span> <span class="badge badge-idx">IDX</span></td><td class="col-type">Integer</td><td class="col-note">→ users.id</td></tr>
+          <tr><td class="col-name">type</td><td class="col-type">Enum</td><td class="col-note">
+            <div class="enum-list">
+              <span class="enum-tag">特休</span><span class="enum-tag">病假</span>
+              <span class="enum-tag">事假</span><span class="enum-tag">婚假</span>
+              <span class="enum-tag">喪假</span><span class="enum-tag">公假</span>
+              <span class="enum-tag">其他</span>
+            </div>
+          </td></tr>
+          <tr><td class="col-name">start_date</td><td class="col-type">String</td><td class="col-note">請假開始日</td></tr>
+          <tr><td class="col-name">end_date</td><td class="col-type">String</td><td class="col-note">請假結束日</td></tr>
+          <tr><td class="col-name">hours</td><td class="col-type">Integer</td><td class="col-note">請假時數（> 0）</td></tr>
+          <tr><td class="col-name">reason</td><td class="col-type">String</td><td class="col-note">請假原因</td></tr>
+          <tr><td class="col-name">status</td><td class="col-type">Enum</td><td class="col-note">
+            <div class="enum-list">
+              <span class="enum-tag">待審核</span><span class="enum-tag">已通過</span>
+              <span class="enum-tag">已拒絕</span><span class="enum-tag">已取消</span>
+            </div>
+          </td></tr>
+          <tr><td class="col-name">reviewer</td><td class="col-type">String?</td><td class="col-note">審核人（可為空）</td></tr>
+          <tr><td class="col-name">created_at</td><td class="col-type">DateTime(tz)</td><td class="col-note">申請時間（UTC）</td></tr>
+          <tr><td class="col-name">updated_at</td><td class="col-type">DateTime(tz)?</td><td class="col-note">最後更新時間</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- leave_status_logs -->
+    <div class="card">
+      <div class="card-header">
+        <span class="icon">🕓</span>
+        <h3>狀態變更歷史</h3>
+        <span class="tablename">leave_status_logs</span>
+      </div>
+      <table>
+        <thead><tr><th>欄位</th><th>型別</th><th>說明</th></tr></thead>
+        <tbody>
+          <tr><td class="col-name">id <span class="badge badge-pk">PK</span></td><td class="col-type">String(UUID)</td><td class="col-note">UUID v4</td></tr>
+          <tr><td class="col-name">leave_id <span class="badge badge-fk">FK</span> <span class="badge badge-idx">IDX</span></td><td class="col-type">String</td><td class="col-note">→ leave_records.id</td></tr>
+          <tr><td class="col-name">from_status</td><td class="col-type">String?</td><td class="col-note">前一狀態（建立時 null）</td></tr>
+          <tr><td class="col-name">to_status</td><td class="col-type">String</td><td class="col-note">新狀態</td></tr>
+          <tr><td class="col-name">changed_by <span class="badge badge-fk">FK</span></td><td class="col-type">Integer</td><td class="col-note">→ users.id（操作者）</td></tr>
+          <tr><td class="col-name">changed_at</td><td class="col-type">DateTime(tz)</td><td class="col-note">變更時間（UTC）</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- email_verifications -->
+    <div class="card">
+      <div class="card-header">
+        <span class="icon">✉️</span>
+        <h3>信箱驗證 Token</h3>
+        <span class="tablename">email_verifications</span>
+      </div>
+      <table>
+        <thead><tr><th>欄位</th><th>型別</th><th>說明</th></tr></thead>
+        <tbody>
+          <tr><td class="col-name">id <span class="badge badge-pk">PK</span></td><td class="col-type">Integer</td><td class="col-note">自動遞增主鍵</td></tr>
+          <tr><td class="col-name">user_id <span class="badge badge-fk">FK</span> <span class="badge badge-idx">IDX</span></td><td class="col-type">Integer</td><td class="col-note">→ users.id</td></tr>
+          <tr><td class="col-name">token <span class="badge badge-uni">UNI</span></td><td class="col-type">String</td><td class="col-note">驗證 token（唯一）</td></tr>
+          <tr><td class="col-name">expires_at</td><td class="col-type">DateTime(tz)</td><td class="col-note">過期時間</td></tr>
+          <tr><td class="col-name">created_at</td><td class="col-type">DateTime(tz)</td><td class="col-note">建立時間</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- password_reset_tokens -->
+    <div class="card">
+      <div class="card-header">
+        <span class="icon">🔑</span>
+        <h3>密碼重設 Token</h3>
+        <span class="tablename">password_reset_tokens</span>
+      </div>
+      <table>
+        <thead><tr><th>欄位</th><th>型別</th><th>說明</th></tr></thead>
+        <tbody>
+          <tr><td class="col-name">id <span class="badge badge-pk">PK</span></td><td class="col-type">Integer</td><td class="col-note">自動遞增主鍵</td></tr>
+          <tr><td class="col-name">user_id <span class="badge badge-fk">FK</span> <span class="badge badge-idx">IDX</span></td><td class="col-type">Integer</td><td class="col-note">→ users.id</td></tr>
+          <tr><td class="col-name">token <span class="badge badge-uni">UNI</span></td><td class="col-type">String</td><td class="col-note">重設 token（urlsafe，唯一）</td></tr>
+          <tr><td class="col-name">expires_at</td><td class="col-type">DateTime(tz)</td><td class="col-note">過期時間（30 分鐘）</td></tr>
+          <tr><td class="col-name">created_at</td><td class="col-type">DateTime(tz)</td><td class="col-note">建立時間</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════
+     SECTION 2 — Table Relations
+═══════════════════════════════════════════════ -->
+<section>
+  <h2>🔗 資料表關聯</h2>
+  <div class="rel-box">
+    <div class="rel-row">
+      <span class="tbl">users</span>
+      <span class="arr">──1:N──▶</span>
+      <span class="tbl">leave_records</span>
+      <span class="rel-note">（一位使用者可有多筆請假記錄）</span>
+    </div>
+    <div class="rel-row">
+      <span class="tbl">leave_records</span>
+      <span class="arr">──1:N──▶</span>
+      <span class="tbl">leave_status_logs</span>
+      <span class="rel-note">（一筆請假可有多筆狀態變更歷史）</span>
+    </div>
+    <div class="rel-row">
+      <span class="tbl">users</span>
+      <span class="arr">──1:N──▶</span>
+      <span class="tbl">email_verifications</span>
+      <span class="rel-note">（一位使用者可有多筆驗證 token）</span>
+    </div>
+    <div class="rel-row">
+      <span class="tbl">users</span>
+      <span class="arr">──1:N──▶</span>
+      <span class="tbl">password_reset_tokens</span>
+      <span class="rel-note">（每次申請重設密碼會先刪除舊 token）</span>
+    </div>
+    <div class="rel-row">
+      <span class="tbl">users</span>
+      <span class="arr">──1:N──▶</span>
+      <span class="tbl">leave_status_logs.changed_by</span>
+      <span class="rel-note">（記錄誰觸發了狀態變更）</span>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════
+     SECTION 3 — API Endpoints
+═══════════════════════════════════════════════ -->
+<section>
+  <h2>🚀 API 端點</h2>
+
+  <!-- Auth -->
+  <div class="card" style="margin-bottom:1.25rem;">
+    <div class="card-header">
+      <span class="icon">🔐</span>
+      <h3>Auth 認證</h3>
+      <span class="tablename">prefix: /auth</span>
+    </div>
+    <table class="api-table">
+      <thead><tr><th>方法</th><th>路徑</th><th>權限</th><th>說明</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="method POST">POST</span></td>
+          <td class="path">/auth/login</td>
+          <td><span class="auth-badge auth-public">公開</span></td>
+          <td class="desc">登入，成功後寫入 httpOnly JWT Cookie</td>
+        </tr>
+        <tr>
+          <td><span class="method POST">POST</span></td>
+          <td class="path">/auth/logout</td>
+          <td><span class="auth-badge auth-login">登入</span></td>
+          <td class="desc">登出，清除 Cookie</td>
+        </tr>
+        <tr>
+          <td><span class="method GET">GET</span></td>
+          <td class="path">/auth/me</td>
+          <td><span class="auth-badge auth-login">登入</span></td>
+          <td class="desc">取得目前登入使用者資料</td>
+        </tr>
+        <tr>
+          <td><span class="method POST">POST</span></td>
+          <td class="path">/auth/forgot-password</td>
+          <td><span class="auth-badge auth-public">公開</span></td>
+          <td class="desc">申請密碼重設，寄送重設信件（30 分鐘有效）</td>
+        </tr>
+        <tr>
+          <td><span class="method POST">POST</span></td>
+          <td class="path">/auth/reset-password</td>
+          <td><span class="auth-badge auth-public">公開</span></td>
+          <td class="desc">使用 token 設定新密碼</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Users -->
+  <div class="card" style="margin-bottom:1.25rem;">
+    <div class="card-header">
+      <span class="icon">👥</span>
+      <h3>User 員工管理</h3>
+      <span class="tablename">prefix: /</span>
+    </div>
+    <table class="api-table">
+      <thead><tr><th>方法</th><th>路徑</th><th>權限</th><th>說明</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="method GET">GET</span></td>
+          <td class="path">/users<br><small style="color:#475569">?search= &page= &limit=</small></td>
+          <td><span class="auth-badge auth-admin">Admin</span></td>
+          <td class="desc">查詢員工列表，支援姓名/帳號搜尋與分頁</td>
+        </tr>
+        <tr>
+          <td><span class="method POST">POST</span></td>
+          <td class="path">/user</td>
+          <td><span class="auth-badge auth-admin">Admin</span></td>
+          <td class="desc">新增員工帳號</td>
+        </tr>
+        <tr>
+          <td><span class="method GET">GET</span></td>
+          <td class="path">/user/<span class="param">{id}</span></td>
+          <td><span class="auth-badge auth-admin">Admin</span></td>
+          <td class="desc">查詢單一員工資料</td>
+        </tr>
+        <tr>
+          <td><span class="method PUT">PUT</span></td>
+          <td class="path">/user/<span class="param">{id}</span></td>
+          <td><span class="auth-badge auth-admin">Admin</span></td>
+          <td class="desc">更新員工資料（全量更新）</td>
+        </tr>
+        <tr>
+          <td><span class="method DELETE">DELETE</span></td>
+          <td class="path">/user/<span class="param">{id}</span></td>
+          <td><span class="auth-badge auth-admin">Admin</span></td>
+          <td class="desc">刪除員工帳號</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Leaves -->
+  <div class="card">
+    <div class="card-header">
+      <span class="icon">📝</span>
+      <h3>Leave 請假管理</h3>
+      <span class="tablename">prefix: /leaves</span>
+    </div>
+    <table class="api-table">
+      <thead><tr><th>方法</th><th>路徑</th><th>權限</th><th>說明</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="method GET">GET</span></td>
+          <td class="path">/leaves<br><small style="color:#475569">?status= &page= &limit=</small></td>
+          <td><span class="auth-badge auth-login">登入</span></td>
+          <td class="desc">查詢請假列表；admin 看全部，員工只看自己</td>
+        </tr>
+        <tr>
+          <td><span class="method GET">GET</span></td>
+          <td class="path">/leaves/<span class="param">{id}</span></td>
+          <td><span class="auth-badge auth-login">登入</span></td>
+          <td class="desc">查詢單筆請假紀錄（員工只能查自己）</td>
+        </tr>
+        <tr>
+          <td><span class="method POST">POST</span></td>
+          <td class="path">/leaves</td>
+          <td><span class="auth-badge auth-login">登入</span></td>
+          <td class="desc">新增請假申請，初始狀態為「待審核」</td>
+        </tr>
+        <tr>
+          <td><span class="method PUT">PUT</span></td>
+          <td class="path">/leaves/<span class="param">{id}</span></td>
+          <td><span class="auth-badge auth-login">登入</span></td>
+          <td class="desc">修改請假內容；員工只能改「待審核」的自己申請</td>
+        </tr>
+        <tr>
+          <td><span class="method PATCH">PATCH</span></td>
+          <td class="path">/leaves/<span class="param">{id}</span>/status</td>
+          <td><span class="auth-badge auth-admin">Admin</span></td>
+          <td class="desc">審核請假（通過 / 拒絕），並記錄狀態歷史</td>
+        </tr>
+        <tr>
+          <td><span class="method PATCH">PATCH</span></td>
+          <td class="path">/leaves/<span class="param">{id}</span>/cancel</td>
+          <td><span class="auth-badge auth-login">登入</span></td>
+          <td class="desc">取消請假；員工可取消「待審核」或「已通過」</td>
+        </tr>
+        <tr>
+          <td><span class="method GET">GET</span></td>
+          <td class="path">/leaves/<span class="param">{id}</span>/status-logs</td>
+          <td><span class="auth-badge auth-login">登入</span></td>
+          <td class="desc">查詢請假狀態變更歷史（員工只能查自己）</td>
+        </tr>
+        <tr>
+          <td><span class="method DELETE">DELETE</span></td>
+          <td class="path">/leaves/<span class="param">{id}</span></td>
+          <td><span class="auth-badge auth-login">登入</span></td>
+          <td class="desc">刪除請假；員工只能刪「待審核」的自己申請</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════
+     SECTION 4 — Legend
+═══════════════════════════════════════════════ -->
+<section>
+  <h2>📌 說明</h2>
+  <div class="rel-box" style="display:flex;flex-wrap:wrap;gap:1.5rem;">
+    <div>
+      <p style="font-size:.78rem;color:#64748b;margin-bottom:.5rem;font-weight:600;">欄位標記</p>
+      <div style="display:flex;flex-direction:column;gap:.35rem;">
+        <span><span class="badge badge-pk">PK</span> <span style="font-size:.8rem;color:#94a3b8;">Primary Key</span></span>
+        <span><span class="badge badge-fk">FK</span> <span style="font-size:.8rem;color:#94a3b8;">Foreign Key</span></span>
+        <span><span class="badge badge-uni">UNI</span> <span style="font-size:.8rem;color:#94a3b8;">Unique</span></span>
+        <span><span class="badge badge-idx">IDX</span> <span style="font-size:.8rem;color:#94a3b8;">Index</span></span>
+      </div>
+    </div>
+    <div>
+      <p style="font-size:.78rem;color:#64748b;margin-bottom:.5rem;font-weight:600;">權限標記</p>
+      <div style="display:flex;flex-direction:column;gap:.35rem;">
+        <span><span class="auth-badge auth-public">公開</span> <span style="font-size:.8rem;color:#94a3b8;">不需登入</span></span>
+        <span><span class="auth-badge auth-login">登入</span> <span style="font-size:.8rem;color:#94a3b8;">需 JWT Cookie</span></span>
+        <span><span class="auth-badge auth-admin">Admin</span> <span style="font-size:.8rem;color:#94a3b8;">需 admin 角色</span></span>
+      </div>
+    </div>
+    <div>
+      <p style="font-size:.78rem;color:#64748b;margin-bottom:.5rem;font-weight:600;">認證方式</p>
+      <p style="font-size:.8rem;color:#94a3b8;">JWT 存於 <code style="background:#1e293b;padding:.1rem .35rem;border-radius:4px;">httpOnly Cookie</code><br>key：<code style="background:#1e293b;padding:.1rem .35rem;border-radius:4px;">access_token</code></p>
+    </div>
+  </div>
+</section>
+
+<p style="text-align:center;color:#334155;font-size:.75rem;margin-top:2rem;">Generated 2026-06-29 &nbsp;·&nbsp; leave-system-backend</p>
+
+</body>
+</html>
