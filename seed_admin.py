@@ -21,6 +21,10 @@ else:
         role        = "admin",
         email       = ADMIN_EMAIL,
         is_verified = True,
+        gender      = "男",
+        id_number   = "A000000000",
+        hire_date   = "2020-01-01",
+        birth_date  = "1990-01-01",
     )
     db.add(admin)
     db.commit()
