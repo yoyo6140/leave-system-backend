@@ -7,7 +7,7 @@ from app.database import get_db
 from app.models import User, LeaveRecord, LeaveStatusLog
 from app.schemas import (
     LeaveCreate, LeaveUpdate, LeaveStatusUpdate, LeaveOut, LeaveStatusLogOut,
-    LeaveListResponse, LeaveResponse, LeaveStatusLogListResponse, MessageResponse,
+    LeaveListResponse, LeaveResponse, LeaveStatusLogListResponse,
     ok, fail,
 )
 from app.auth import get_current_user
@@ -324,29 +324,31 @@ def get_leave_status_logs(
     return ok([LeaveStatusLogOut.model_validate(l) for l in logs])
 
 
-# ── 取消（＝刪除）─────────────────────────────────────────────────────────────
+# ── 取消（軟刪除）─────────────────────────────────────────────────────────────
 # 流程：申請者送出 → admin 審核（通過／拒絕）。
-# 在 admin 審核之前，申請者想取消就是整筆刪除；審核完成後不可再刪除，
-# 一律走「重新申請」而非取消，所以這裡不做「已取消」這種中間狀態。
+# 在 admin 審核之前，申請者想取消就把狀態改成「已取消」並保留紀錄（軟刪除），
+# 不整筆砍掉——跟「拒絕」一樣是狀態變化，才留得住查核軌跡；
+# 審核完成後（已通過／已拒絕）任何角色都不可再取消。
 
 @router.delete(
     "/{id}",
     status_code=status.HTTP_200_OK,
-    summary="取消（刪除）請假申請",
+    summary="取消請假申請（軟刪除）",
     description=(
-        "取消申請＝整筆刪除，僅限狀態仍是「待審核」（尚未經 admin 審核）時可操作，"
-        "審核完成後（已通過／已拒絕）任何角色都不可再刪除。\n\n"
-        "員工只能刪除自己的申請；admin 可刪除任何人的申請，但同樣限「待審核」。"
+        "取消申請：狀態改為「已取消」並保留紀錄（不會真的刪除資料列），"
+        "僅限狀態仍是「待審核」（尚未經 admin 審核）時可操作，"
+        "審核完成後（已通過／已拒絕）任何角色都不可再取消。\n\n"
+        "員工只能取消自己的申請；admin 可取消任何人的申請，但同樣限「待審核」。"
     ),
-    response_model=MessageResponse,
+    response_model=LeaveResponse,
     responses={
         200: {
-            "description": "刪除成功",
+            "description": "取消成功",
             "content": {
                 "application/json": {
                     "example": {
                         "success": True,
-                        "data": {"message": "請假紀錄已刪除"},
+                        "data": {**_LEAVE_EXAMPLE, "status": "已取消"},
                     }
                 }
             },
@@ -363,12 +365,15 @@ def delete_leave(
         return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content=fail("LEAVE_NOT_FOUND", "找不到請假紀錄"))
 
     if current_user.role != "admin" and record.user_id != current_user.id:
-        return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content=fail("FORBIDDEN", "無權限刪除此紀錄"))
+        return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content=fail("FORBIDDEN", "無權限取消此紀錄"))
 
-    # 不分身分：審核完成後就不可再刪除，取消只能發生在待審核階段
+    # 不分身分：審核完成後就不可再取消，取消只能發生在待審核階段
     if record.status != "待審核":
         return JSONResponse(status_code=status.HTTP_409_CONFLICT, content=fail("LEAVE_NOT_DELETABLE", "僅能取消狀態為「待審核」的請假申請，審核完成後無法再取消"))
 
-    db.delete(record)
+    old_status    = record.status
+    record.status = "已取消"
+    db.add(LeaveStatusLog(leave_id=record.id, from_status=old_status, to_status="已取消", changed_by=current_user.id))
     db.commit()
-    return ok({"message": "請假紀錄已刪除"})
+    db.refresh(record)
+    return ok(LeaveOut.model_validate(record))
