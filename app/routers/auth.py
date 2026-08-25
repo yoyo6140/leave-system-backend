@@ -1,6 +1,6 @@
 import secrets
 from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
@@ -12,7 +12,7 @@ from app.schemas import (
     UserOut, ForgotPasswordRequest, ResetPasswordRequest, MessageResponse,
     ok, fail,
 )
-from app.auth import verify_password, create_token, get_current_user, EXPIRE_MIN, COOKIE_SECURE, COOKIE_SAMESITE
+from app.auth import verify_password, create_token, get_current_user
 from app.email import send_reset_password_email
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -55,7 +55,7 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
     "/logout",
     status_code=status.HTTP_200_OK,
     summary="登出",
-    description="清除 httpOnly cookie，使 token 失效",
+    description="登出，前端應自行清除 localStorage 中的 token",
     response_model=SuccessResponse,
     responses={
         200: {
@@ -64,8 +64,7 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
         },
     },
 )
-def logout(response: Response):
-    response.delete_cookie(key="access_token", httponly=True, samesite=COOKIE_SAMESITE, secure=COOKIE_SECURE)
+def logout():
     return {"success": True}
 
 
