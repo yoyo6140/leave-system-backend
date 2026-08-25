@@ -461,7 +461,13 @@ OAuth2 Password Flow，供 Swagger UI「Authorize」按鈕使用，不列入一�
 
 #### `GET /leaves`
 
-查詢請假紀錄列表，支援狀態篩選與分頁。Admin 可查所有人的紀錄；一般員工只能查自己的。
+查詢請假紀錄列表，支援狀態篩選、關鍵字搜尋與分頁。預設 Admin 可查所有人的紀錄；一般員工只能查自己的。
+
+帶入 `mine=true` 時，無論角色一律強制只回傳登入者自己的紀錄（即使是 admin 也只看到自己的）。
+用於「個人請假紀錄」頁面，與 admin 專用的「員工請假紀錄／審核管理」查詢分開，避免混用。
+
+帶入 `search` 時比對請假原因（`reason`）；查詢全公司紀錄時（admin 且未加 `mine`）
+同時比對申請人姓名（`name`）與帳號（`username`）。
 
 - **權限**：需登入
 
@@ -470,8 +476,10 @@ OAuth2 Password Flow，供 Swagger UI「Authorize」按鈕使用，不列入一�
 | 參數 | 型別 | 預設 | 說明 |
 |------|------|------|------|
 | `status` | string | — | 篩選狀態：`待審核` / `已通過` / `已拒絕` |
+| `search` | string | — | 關鍵字搜尋原因；admin 查全公司時一併搜尋申請人姓名／帳號 |
 | `page` | integer | `1` | 頁碼 |
 | `limit` | integer | `10` | 每頁筆數（最大 100） |
+| `mine` | boolean | `false` | `true` 時強制只查自己的紀錄，即使是 admin 也一樣 |
 
 **成功回應** `200`：
 
@@ -692,29 +700,15 @@ OAuth2 Password Flow，供 Swagger UI「Authorize」按鈕使用，不列入一�
 
 ---
 
-#### `PATCH /leaves/{id}/cancel`
+#### `DELETE /leaves/{id}` — 取消（＝刪除）請假申請
 
-取消請假申請。員工可取消自己「待審核」或「已通過」的申請；Admin 可取消任何紀錄。
+流程是申請者送出 → admin 審核（通過／拒絕）。**取消申請＝整筆刪除**，僅限狀態仍是
+「待審核」（尚未經 admin 審核）時可操作；審核完成後（已通過／已拒絕）**任何角色都不可再刪除**。
 
-- **權限**：需登入
-- **路徑參數**：`id`（string / UUID）
+員工只能刪除自己的申請；Admin 可刪除任何人的申請，但同樣限「待審核」。
 
-**成功回應** `200`：回傳更新後的 `LeaveOut` 物件（`status` 變為 `已取消`）
-
-**失敗回應：**
-
-| HTTP | 錯誤碼 | 說明 |
-|------|--------|------|
-| 404 | `LEAVE_NOT_FOUND` | 找不到請假紀錄 |
-| 403 | `FORBIDDEN` | 無權限取消此紀錄 |
-| 409 | `LEAVE_NOT_CANCELABLE` | 僅能取消「待審核」或「已通過」的申請 |
-| 409 | `LEAVE_ALREADY_CANCELLED` | 此申請已取消 |
-
----
-
-#### `DELETE /leaves/{id}`
-
-刪除請假申請。員工只能刪除狀態為「待審核」的自己的申請；Admin 可刪除任何紀錄。
+> 舊版曾規劃 `PATCH /leaves/{id}/cancel`（軟取消，狀態改為「已取消」但保留紀錄），
+> 與實際流程不符（該端點允許在「已通過」後還能取消）已移除，避免混淆。取消一律用這支刪除。
 
 - **權限**：需登入
 - **路徑參數**：`id`（string / UUID）
@@ -734,7 +728,7 @@ OAuth2 Password Flow，供 Swagger UI「Authorize」按鈕使用，不列入一�
 |------|--------|------|
 | 404 | `LEAVE_NOT_FOUND` | 找不到請假紀錄 |
 | 403 | `FORBIDDEN` | 無權限刪除此紀錄 |
-| 409 | `LEAVE_NOT_DELETABLE` | 僅能刪除「待審核」狀態的申請 |
+| 409 | `LEAVE_NOT_DELETABLE` | 僅能取消「待審核」狀態的申請，審核完成後無法再取消 |
 
 ---
 
@@ -801,9 +795,7 @@ OAuth2 Password Flow，供 Swagger UI「Authorize」按鈕使用，不列入一�
 | `USER_NOT_FOUND` | 404 | 找不到指定使用者 |
 | `LEAVE_NOT_FOUND` | 404 | 找不到請假紀錄 |
 | `LEAVE_NOT_EDITABLE` | 409 | 僅能修改「待審核」狀態的申請 |
-| `LEAVE_NOT_DELETABLE` | 409 | 僅能刪除「待審核」狀態的申請 |
-| `LEAVE_NOT_CANCELABLE` | 409 | 僅能取消「待審核」或「已通過」的申請 |
-| `LEAVE_ALREADY_CANCELLED` | 409 | 此請假申請已取消 |
+| `LEAVE_NOT_DELETABLE` | 409 | 僅能取消（刪除）「待審核」狀態的申請，審核完成後無法再取消 |
 | `INVALID_LEAVE_TYPE` | 422 | 假別不在允許清單內 |
 | `INVALID_HOURS` | 422 | 時數必須大於 0 |
 | `INVALID_STATUS` | 422 | 狀態值不合法 |
