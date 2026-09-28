@@ -23,6 +23,8 @@ def swagger_token(form: OAuth2PasswordRequestForm = Depends(), db: Session = Dep
     user = db.query(User).filter(User.username == form.username).first()
     if not user or not verify_password(form.password, user.password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="帳號或密碼錯誤")
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="帳號已停用")
     token = create_token({"sub": str(user.id), "role": user.role})
     return {"access_token": token, "token_type": "bearer"}
 
@@ -35,6 +37,7 @@ def swagger_token(form: OAuth2PasswordRequestForm = Depends(), db: Session = Dep
     response_model=LoginResponse,
     responses={
         401: {"model": LoginErrorResponse},
+        403: {"model": LoginErrorResponse, "description": "帳號已停用"},
     },
 )
 def login(body: LoginRequest, db: Session = Depends(get_db)):
@@ -44,6 +47,12 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
         return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
             content=fail("INVALID_CREDENTIALS", "帳號或密碼錯誤")
+        )
+
+    if not user.is_active:
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content=fail("ACCOUNT_DISABLED", "帳號已停用")
         )
 
     token = create_token({"sub": str(user.id), "role": user.role})
@@ -121,8 +130,8 @@ def get_me(current_user: User = Depends(get_current_user)):
 async def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == body.email).first()
 
-    # 無論信箱是否存在，都回傳相同訊息，避免帳號枚舉攻擊
-    if user:
+    # 無論信箱是否存在或帳號是否停用，都回傳相同訊息，避免帳號枚舉攻擊
+    if user and user.is_active:
         # 刪除該使用者舊有的未使用 token
         db.query(PasswordResetToken).filter(PasswordResetToken.user_id == user.id).delete()
 

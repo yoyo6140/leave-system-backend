@@ -3,9 +3,9 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import User
+from app.models import User, PasswordResetToken
 from app.auth import get_current_user
-from app.schemas import UserCreate, UserOut, UserUpdate, UserListResponse, UserResponse, MessageResponse, ok, fail
+from app.schemas import UserCreate, UserOut, UserUpdate, UserStatusUpdate, UserListResponse, UserResponse, ok, fail
 
 router = APIRouter(tags=["user"])
 
@@ -19,6 +19,7 @@ _USER_EXAMPLE = {
     "id_number": "A123456789",
     "hire_date": "2020-01-01",
     "birth_date": "1990-05-15",
+    "is_active": True,
 }
 
 
@@ -59,10 +60,13 @@ def get_users(
     search: str = Query(default="", description="搜尋姓名或帳號"),
     page: int   = Query(default=1,  ge=1, description="頁碼"),
     limit: int  = Query(default=10, ge=1, le=500, description="每頁筆數"),
+    include_inactive: bool = Query(default=False, description="是否包含已停用的帳號"),
     db: Session = Depends(get_db),
     _: User     = Depends(require_admin),
 ):
     query = db.query(User)
+    if not include_inactive:
+        query = query.filter(User.is_active.is_(True))
     if search:
         query = query.filter(
             User.name.contains(search) | User.username.contains(search)
@@ -189,34 +193,34 @@ def update_user(
     return ok(UserOut.model_validate(user))
 
 
-@router.delete(
-    "/user/{id}",
+@router.patch(
+    "/user/{id}/status",
     status_code=status.HTTP_200_OK,
-    summary="刪除員工帳號",
-    description="admin 限定，刪除一位員工的帳號",
-    response_model=MessageResponse,
+    response_model=UserResponse,
+    summary="啟用／停用員工帳號",
+    description="admin 限定。停用後該員工無法登入，已發出的 token 也會失效；請假紀錄完整保留。admin 不可停用自己",
     responses={
         200: {
-            "description": "刪除成功",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "success": True,
-                        "data": {"message": "員工帳號已刪除"},
-                    }
-                }
-            },
+            "description": "更新成功",
+            "content": {"application/json": {"example": {"success": True, "data": {**_USER_EXAMPLE, "is_active": False}}}},
         },
     },
 )
-def delete_user(
+def update_user_status(
     id: int,
+    body: UserStatusUpdate,
     db: Session = Depends(get_db),
-    _: User     = Depends(require_admin),
+    admin: User = Depends(require_admin),
 ):
     user = db.query(User).filter(User.id == id).first()
     if not user:
         return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content=fail("USER_NOT_FOUND", "找不到使用者"))
-    db.delete(user)
+    if user.id == admin.id and not body.is_active:
+        return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content=fail("CANNOT_DEACTIVATE_SELF", "不可停用自己的帳號"))
+
+    user.is_active = body.is_active
+    if not body.is_active:
+        db.query(PasswordResetToken).filter(PasswordResetToken.user_id == id).delete()
     db.commit()
-    return ok({"message": "員工帳號已刪除"})
+    db.refresh(user)
+    return ok(UserOut.model_validate(user))

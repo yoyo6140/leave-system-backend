@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
-from sqlalchemy import String, Integer, DateTime, Enum as SAEnum
+from sqlalchemy import String, Integer, DateTime, Enum as SAEnum, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
@@ -20,6 +20,7 @@ class User(Base):
     role:       Mapped[str]      = mapped_column(SAEnum("admin", "employee", name="user_role"), nullable=False, default="employee")
     email:      Mapped[str] = mapped_column(String,     unique=True, nullable=False)
     is_verified: Mapped[bool]      = mapped_column(default=False, nullable=False)
+    is_active:  Mapped[bool]       = mapped_column(default=True, server_default=text("true"), nullable=False)
     gender:     Mapped[str] = mapped_column(SAEnum("男", "女", name="gender"), nullable=False)
     id_number:  Mapped[str] = mapped_column(String(10), unique=True, nullable=False)
     hire_date:  Mapped[str] = mapped_column(String,     nullable=False)
