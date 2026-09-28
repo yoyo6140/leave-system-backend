@@ -11,6 +11,7 @@ class UserOut(BaseModel):
     id_number:  str
     hire_date:  str
     birth_date: str
+    is_active:  bool
 
     model_config = {"from_attributes": True}
 
@@ -34,6 +35,9 @@ class UserUpdate(BaseModel):
     id_number:  str
     hire_date:  str
     birth_date: str
+
+class UserStatusUpdate(BaseModel):
+    is_active: bool
 
 class UserListData(BaseModel):
     total: int

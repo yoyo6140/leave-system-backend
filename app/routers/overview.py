@@ -79,7 +79,7 @@ def get_overview(
     )
 
     # 員工人數
-    employee_count = db.query(User).filter(User.role == "employee").count()
+    employee_count = db.query(User).filter(User.role == "employee", User.is_active.is_(True)).count()
 
     # 使用者 id → name 對照表
     user_map: dict[int, str] = {u.id: u.name for u in db.query(User).all()}
