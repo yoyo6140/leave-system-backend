@@ -200,7 +200,7 @@ POST /auth/login
 | `POST`   | `/user`       | 新增員工帳號 | `admin` |
 | `GET`    | `/user/{id}`  | 查詢單一員工資料 | `admin` |
 | `PUT`    | `/user/{id}`  | 更新員工資料 | `admin` |
-| `DELETE` | `/user/{id}`  | 刪除員工帳號 | `admin` |
+| `PATCH`  | `/user/{id}/status` | 啟用／停用員工帳號（員工不會被真正刪除） | `admin` |
 
 **新增員工請求範例：**
 
@@ -256,6 +256,8 @@ POST /user
 | `EMAIL_EXISTS` | 409 | 信箱已被使用 |
 | `ID_NUMBER_EXISTS` | 409 | 身分證號碼已存在 |
 | `USER_NOT_FOUND` | 404 | 找不到使用者 |
+| `ACCOUNT_DISABLED` | 403 | 帳號已停用，無法登入 |
+| `CANNOT_DEACTIVATE_SELF` | 400 | admin 不可停用自己的帳號 |
 
 ## 資料模型
 
