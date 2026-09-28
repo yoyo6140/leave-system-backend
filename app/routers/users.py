@@ -35,7 +35,7 @@ def require_admin(current_user=Depends(get_current_user)):
     "/users",
     status_code=status.HTTP_200_OK,
     summary="查詢員工列表",
-    description="admin 限定，支援搜尋與分頁",
+    description="admin 限定，支援以姓名、帳號、身分證字號搜尋與分頁",
     response_model=UserListResponse,
     responses={
         200: {
@@ -57,7 +57,7 @@ def require_admin(current_user=Depends(get_current_user)):
     },
 )
 def get_users(
-    search: str = Query(default="", description="搜尋姓名或帳號"),
+    search: str = Query(default="", description="搜尋姓名、帳號或身分證字號（身分證字號不分大小寫）"),
     page: int   = Query(default=1,  ge=1, description="頁碼"),
     limit: int  = Query(default=10, ge=1, le=500, description="每頁筆數"),
     include_inactive: bool = Query(default=False, description="是否包含已停用的帳號"),
@@ -69,7 +69,9 @@ def get_users(
         query = query.filter(User.is_active.is_(True))
     if search:
         query = query.filter(
-            User.name.contains(search) | User.username.contains(search)
+            User.name.contains(search)
+            | User.username.contains(search)
+            | User.id_number.icontains(search)
         )
     total = query.count()
     users = query.offset((page - 1) * limit).limit(limit).all()
