@@ -587,7 +587,7 @@ OAuth2 Password Flow，供 Swagger UI「Authorize」按鈕使用，不列入一�
 
 #### `PUT /leaves/{id}`
 
-修改請假申請內容。員工只能修改狀態為「待審核」的自己的申請；Admin 可修改任何紀錄。
+修改請假申請內容。僅能修改狀態為「待審核」的自己的申請，Admin 亦同，不可修改他人紀錄。
 
 - **權限**：需登入
 - **路徑參數**：`id`（string / UUID）
@@ -620,7 +620,9 @@ OAuth2 Password Flow，供 Swagger UI「Authorize」按鈕使用，不列入一�
 
 #### `PATCH /leaves/{id}/status`
 
-審核請假申請，更新狀態為「已通過」或「已拒絕」。
+審核請假申請，將「待審核」的申請核准或駁回。`reviewer` 由後端自動帶入目前登入的 admin 姓名，
+不接受前端指定。已審核過的申請（已通過／已拒絕／已取消）不可再變更狀態，僅能由申請人重新提出新的紀錄；
+admin 可審核自己提出的申請。
 
 - **權限**：`admin`
 - **路徑參數**：`id`（string / UUID）
@@ -629,17 +631,15 @@ OAuth2 Password Flow，供 Swagger UI「Authorize」按鈕使用，不列入一�
 
 ```json
 {
-  "status": "已通過",
-  "reviewer": "張主管"
+  "status": "已通過"
 }
 ```
 
 | 欄位 | 型別 | 必填 | 說明 |
 |------|------|------|------|
-| `status` | string | 是 | `待審核` / `已通過` / `已拒絕` |
-| `reviewer` | string | 否 | 審核人姓名 |
+| `status` | string | 是 | `已通過` / `已拒絕` |
 
-**成功回應** `200`：回傳更新後的 `LeaveOut` 物件
+**成功回應** `200`：回傳更新後的 `LeaveOut` 物件（`reviewer` 為後端自動帶入的審核人姓名）
 
 **失敗回應：**
 
@@ -647,7 +647,8 @@ OAuth2 Password Flow，供 Swagger UI「Authorize」按鈕使用，不列入一�
 |------|--------|------|
 | 403 | `FORBIDDEN` | 僅 admin 可審核 |
 | 404 | `LEAVE_NOT_FOUND` | 找不到請假紀錄 |
-| 422 | `INVALID_STATUS` | 狀態值不合法 |
+| 409 | `LEAVE_ALREADY_REVIEWED` | 已審核過的申請不可再變更，請申請人重新提出新的紀錄 |
+| 422 | `INVALID_STATUS` | 狀態值不合法（僅接受 `已通過` / `已拒絕`） |
 
 ---
 
@@ -707,7 +708,7 @@ OAuth2 Password Flow，供 Swagger UI「Authorize」按鈕使用，不列入一�
 僅限狀態仍是「待審核」（尚未經 admin 審核）時可操作；
 審核完成後（已通過／已拒絕）**任何角色都不可再取消**。
 
-員工只能取消自己的申請；Admin 可取消任何人的申請，但同樣限「待審核」。
+僅能取消自己的申請，Admin 亦同，不可取消他人申請；同樣限「待審核」。
 
 > 舊版曾規劃另一支 `PATCH /leaves/{id}/cancel`，與實際流程不符（允許在「已通過」後還能取消）
 > 已移除；也曾短暫改成整筆硬刪除，後改回軟刪除以保留稽核紀錄。取消一律用這支 `DELETE`。
