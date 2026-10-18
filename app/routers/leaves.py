@@ -15,7 +15,7 @@ from app.auth import get_current_user
 router = APIRouter(prefix="/leaves", tags=["leave"])
 
 VALID_TYPES    = {"特休", "病假", "事假", "婚假", "喪假", "公假", "其他"}
-VALID_STATUSES = {"待審核", "已通過", "已拒絕", "已取消"}
+REVIEW_TARGETS = {"已通過", "已拒絕"}
 
 _LEAVE_EXAMPLE = {
     "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
@@ -196,7 +196,7 @@ def create_leave(
     "/{id}",
     status_code=status.HTTP_200_OK,
     summary="修改請假內容",
-    description="員工只能修改狀態為「待審核」的自己的紀錄；admin 可修改任何紀錄",
+    description="僅能修改狀態為「待審核」的自己的紀錄，admin 亦同，不可修改他人紀錄",
     response_model=LeaveResponse,
     responses={
         200: {
@@ -219,11 +219,10 @@ def update_leave(
     if not record:
         return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content=fail("LEAVE_NOT_FOUND", "找不到請假紀錄"))
 
-    if current_user.role != "admin":
-        if record.user_id != current_user.id:
-            return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content=fail("FORBIDDEN", "無權限修改此紀錄"))
-        if record.status != "待審核":
-            return JSONResponse(status_code=status.HTTP_409_CONFLICT, content=fail("LEAVE_NOT_EDITABLE", "僅能修改狀態為「待審核」的請假申請"))
+    if record.user_id != current_user.id:
+        return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content=fail("FORBIDDEN", "無權限修改此紀錄"))
+    if record.status != "待審核":
+        return JSONResponse(status_code=status.HTTP_409_CONFLICT, content=fail("LEAVE_NOT_EDITABLE", "僅能修改狀態為「待審核」的請假申請"))
 
     if body.type not in VALID_TYPES:
         return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content=fail("INVALID_LEAVE_TYPE", f"假別必須為：{', '.join(VALID_TYPES)}"))
@@ -246,7 +245,7 @@ def update_leave(
     "/{id}/status",
     status_code=status.HTTP_200_OK,
     summary="審核請假申請",
-    description="admin 限定，更新請假狀態（已通過 / 已拒絕）",
+    description="admin 限定，將「待審核」的申請核准或駁回；審核人自動帶入目前登入的 admin，不接受前端指定。已審核過的紀錄不可再變更，僅能由申請人重新提出新的紀錄",
     response_model=LeaveResponse,
     responses={
         200: {
@@ -271,16 +270,18 @@ def update_leave_status(
     if current_user.role != "admin":
         return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content=fail("FORBIDDEN", "僅 admin 可審核請假"))
 
-    if body.status not in VALID_STATUSES:
-        return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content=fail("INVALID_STATUS", f"狀態必須為：{', '.join(VALID_STATUSES)}"))
+    if body.status not in REVIEW_TARGETS:
+        return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content=fail("INVALID_STATUS", f"狀態必須為：{', '.join(REVIEW_TARGETS)}"))
 
     record = db.query(LeaveRecord).filter(LeaveRecord.id == id).first()
     if not record:
         return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content=fail("LEAVE_NOT_FOUND", "找不到請假紀錄"))
+    if record.status != "待審核":
+        return JSONResponse(status_code=status.HTTP_409_CONFLICT, content=fail("LEAVE_ALREADY_REVIEWED", "已審核過的申請不可再變更，請申請人重新提出新的紀錄"))
 
     old_status      = record.status
     record.status   = body.status
-    record.reviewer = body.reviewer
+    record.reviewer = current_user.name
     db.add(LeaveStatusLog(leave_id=record.id, from_status=old_status, to_status=body.status, changed_by=current_user.id))
     db.commit()
     db.refresh(record)
@@ -338,7 +339,7 @@ def get_leave_status_logs(
         "取消申請：狀態改為「已取消」並保留紀錄（不會真的刪除資料列），"
         "僅限狀態仍是「待審核」（尚未經 admin 審核）時可操作，"
         "審核完成後（已通過／已拒絕）任何角色都不可再取消。\n\n"
-        "員工只能取消自己的申請；admin 可取消任何人的申請，但同樣限「待審核」。"
+        "僅能取消自己的申請，admin 亦同，不可取消他人申請。"
     ),
     response_model=LeaveResponse,
     responses={
@@ -364,7 +365,7 @@ def delete_leave(
     if not record:
         return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content=fail("LEAVE_NOT_FOUND", "找不到請假紀錄"))
 
-    if current_user.role != "admin" and record.user_id != current_user.id:
+    if record.user_id != current_user.id:
         return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content=fail("FORBIDDEN", "無權限取消此紀錄"))
 
     # 不分身分：審核完成後就不可再取消，取消只能發生在待審核階段
