@@ -27,8 +27,7 @@ class LeaveUpdate(BaseModel):
     reason:     str = ""
 
 class LeaveStatusUpdate(BaseModel):
-    status:   str
-    reviewer: str | None = None
+    status: str
 
 class LeaveOut(BaseModel):
     id:         str
