@@ -9,6 +9,17 @@ from datetime import datetime, timezone
 from app.database import SessionLocal
 from app.models import User, LeaveRecord, LeaveStatusLog
 
+# 假別中文 -> leave_types.code（這份種子資料用中文比較好讀，實際存進去要轉成代碼）
+LEAVE_TYPE_CODE_BY_NAME = {
+    "特休": "annual",
+    "病假": "sick",
+    "事假": "personal",
+    "婚假": "marriage",
+    "喪假": "bereavement",
+    "公假": "official",
+    "其他": "other",
+}
+
 db = SessionLocal()
 
 # ── 取得 admin（作為審核人）────────────────────────────────────────────────────
@@ -189,18 +200,18 @@ for emp_data in EMPLOYEES:
 
     records = LEAVE_RECORDS.get(emp_data["username"], [])
     for r in records:
-        reviewer = admin.name if r["status"] in ("已通過", "已拒絕") else None
+        reviewer_id = admin.id if r["status"] in ("已通過", "已拒絕") else None
         leave = LeaveRecord(
-            id         = str(uuid.uuid4()),
-            user_id    = employee.id,
-            type       = r["type"],
-            start_date = r["start"],
-            end_date   = r["end"],
-            hours      = r["hours"],
-            reason     = r.get("reason", ""),
-            status     = r["status"],
-            reviewer   = reviewer,
-            created_at = make_dt(r["start"]),
+            id          = str(uuid.uuid4()),
+            user_id     = employee.id,
+            type        = LEAVE_TYPE_CODE_BY_NAME[r["type"]],
+            start_date  = r["start"],
+            end_date    = r["end"],
+            hours       = r["hours"],
+            reason      = r.get("reason", ""),
+            status      = r["status"],
+            reviewer_id = reviewer_id,
+            created_at  = make_dt(r["start"]),
         )
         db.add(leave)
         db.flush()

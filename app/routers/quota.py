@@ -45,12 +45,13 @@ def _build_quota(user: User, as_of: date, db: Session) -> dict:
     leave_types = db.query(LeaveType).order_by(LeaveType.sort_order).all()
     quotas = get_all_quotas(user.hire_date, leave_types, as_of)
 
-    # 撈該週年度內狀態為「已通過」的假單，依假別加總時數
+    # 撈該週年度內狀態為「待審核」或「已通過」的假單，依假別加總時數
+    # 送出即預扣：待審核的時數也算已佔用（規格第 5 節）
     used_rows = (
         db.query(LeaveRecord.type, func.sum(LeaveRecord.hours))
         .filter(
             LeaveRecord.user_id == user.id,
-            LeaveRecord.status  == "已通過",
+            LeaveRecord.status.in_(["待審核", "已通過"]),
             LeaveRecord.start_date >= year_start.isoformat(),
             LeaveRecord.start_date <  next_anniversary.isoformat(),
         )

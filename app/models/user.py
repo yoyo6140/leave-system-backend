@@ -27,4 +27,6 @@ class User(Base):
     birth_date: Mapped[str] = mapped_column(String,     nullable=False)
     created_at: Mapped[datetime]   = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
-    leave_records: Mapped[list[LeaveRecord]] = relationship("LeaveRecord", back_populates="user")
+    leave_records: Mapped[list[LeaveRecord]] = relationship(
+        "LeaveRecord", foreign_keys="LeaveRecord.user_id", back_populates="user"
+    )
