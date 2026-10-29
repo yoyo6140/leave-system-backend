@@ -17,7 +17,7 @@ class LeaveRecord(Base):
 
     id:         Mapped[str]           = mapped_column(String,  primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id:    Mapped[int]           = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    type:       Mapped[str]           = mapped_column(SAEnum("特休", "病假", "事假", "婚假", "喪假", "公假", "其他", name="leave_type"), nullable=False)
+    type:       Mapped[str]           = mapped_column(String(20), ForeignKey("leave_types.code"), nullable=False)
     start_date: Mapped[str]           = mapped_column(String,  nullable=False)
     end_date:   Mapped[str]           = mapped_column(String,  nullable=False)
     hours:      Mapped[int]           = mapped_column(Integer, nullable=False)

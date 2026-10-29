@@ -46,5 +46,5 @@ alembic upgrade head
 
 `doc/spec/` 底下是**目標規格**，有些地方和現有程式碼不同（例如規格中的假別 `type` 改用英文代碼，但目前程式碼用中文）。實作或修改功能前，一律以規格為準；規格裡的「新增」「變更」標記代表和現況不同的地方。規格和程式碼衝突時，先告知使用者再動手。`doc/api-spec.md` 是 API 說明文件。
 
-- 第一階段核心功能：@doc/spec/leaves-system.md
-- 第二階段 AI 助理（用 Modal 自架模型取代 Gemini）：@doc/spec/ai-service.md
+- 第一階段核心功能：doc/spec/leaves-system.md
+- 第二階段 AI 助理（用 Modal 自架模型取代 Gemini）：doc/spec/ai-service.md

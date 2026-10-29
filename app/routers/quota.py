@@ -5,7 +5,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import User, LeaveRecord
+from app.models import User, LeaveRecord, LeaveType
 from app.auth import get_current_user
 from app.leave_quota import get_all_quotas, get_anniversary_year_start, get_anniversary_year_end
 from app.schemas import LeaveQuotaResponse, ok, fail
@@ -22,13 +22,13 @@ _QUOTA_EXAMPLE = {
         "year_start": "2024-03-15",
         "year_end": "2025-03-14",
         "quotas": [
-            {"type": "特休", "total_days": 14, "total_hours": 112, "used_hours": 16, "remaining_hours": 96, "note": "年資 4 年"},
-            {"type": "病假", "total_days": 30, "total_hours": 240, "used_hours": 0, "remaining_hours": 240, "note": None},
-            {"type": "事假", "total_days": 14, "total_hours": 112, "used_hours": 8, "remaining_hours": 104, "note": None},
-            {"type": "婚假", "total_days": 8,  "total_hours": 64,  "used_hours": 0, "remaining_hours": 64,  "note": None},
-            {"type": "喪假", "total_days": 8,  "total_hours": 64,  "used_hours": 0, "remaining_hours": 64,  "note": None},
-            {"type": "公假", "total_days": None, "total_hours": None, "used_hours": 0, "remaining_hours": None, "note": "無上限"},
-            {"type": "其他", "total_days": None, "total_hours": None, "used_hours": 0, "remaining_hours": None, "note": "無上限"},
+            {"type": "annual", "total_days": 14, "total_hours": 112, "used_hours": 16, "remaining_hours": 96, "note": "年資 4 年"},
+            {"type": "sick", "total_days": 30, "total_hours": 240, "used_hours": 0, "remaining_hours": 240, "note": None},
+            {"type": "personal", "total_days": 14, "total_hours": 112, "used_hours": 8, "remaining_hours": 104, "note": None},
+            {"type": "marriage", "total_days": None, "total_hours": None, "used_hours": 0, "remaining_hours": None, "note": "無上限"},
+            {"type": "bereavement", "total_days": None, "total_hours": None, "used_hours": 0, "remaining_hours": None, "note": "無上限"},
+            {"type": "official", "total_days": None, "total_hours": None, "used_hours": 0, "remaining_hours": None, "note": "無上限"},
+            {"type": "other", "total_days": None, "total_hours": None, "used_hours": 0, "remaining_hours": None, "note": "無上限"},
         ],
     },
 }
@@ -42,7 +42,8 @@ def _build_quota(user: User, as_of: date, db: Session) -> dict:
     # 下一個週年日（作為查詢的排他上界）
     next_anniversary = year_end + timedelta(days=1)
 
-    quotas = get_all_quotas(user.hire_date, as_of)
+    leave_types = db.query(LeaveType).order_by(LeaveType.sort_order).all()
+    quotas = get_all_quotas(user.hire_date, leave_types, as_of)
 
     # 撈該週年度內狀態為「已通過」的假單，依假別加總時數
     used_rows = (

@@ -4,7 +4,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import User, LeaveRecord, LeaveStatusLog
+from app.models import User, LeaveRecord, LeaveStatusLog, LeaveType
 from app.schemas import (
     LeaveCreate, LeaveUpdate, LeaveStatusUpdate, LeaveOut, LeaveStatusLogOut,
     LeaveListResponse, LeaveResponse, LeaveStatusLogListResponse,
@@ -14,13 +14,18 @@ from app.auth import get_current_user
 
 router = APIRouter(prefix="/leaves", tags=["leave"])
 
-VALID_TYPES    = {"特休", "病假", "事假", "婚假", "喪假", "公假", "其他"}
 REVIEW_TARGETS = {"已通過", "已拒絕"}
+
+
+def _valid_types(db: Session) -> set[str]:
+    """假別代碼不寫死，一律讀 leave_types 表（規格第 96 行要求）"""
+    return {code for (code,) in db.query(LeaveType.code).all()}
+
 
 _LEAVE_EXAMPLE = {
     "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "user_id": 1,
-    "type": "特休",
+    "type": "annual",
     "start_date": "2024-07-01",
     "end_date": "2024-07-03",
     "hours": 16,
@@ -169,8 +174,9 @@ def create_leave(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if body.type not in VALID_TYPES:
-        return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content=fail("INVALID_LEAVE_TYPE", f"假別必須為：{', '.join(VALID_TYPES)}"))
+    valid_types = _valid_types(db)
+    if body.type not in valid_types:
+        return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content=fail("INVALID_LEAVE_TYPE", f"假別必須為：{', '.join(valid_types)}"))
     if body.hours <= 0:
         return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content=fail("INVALID_HOURS", "時數必須大於 0"))
 
@@ -224,8 +230,9 @@ def update_leave(
     if record.status != "待審核":
         return JSONResponse(status_code=status.HTTP_409_CONFLICT, content=fail("LEAVE_NOT_EDITABLE", "僅能修改狀態為「待審核」的請假申請"))
 
-    if body.type not in VALID_TYPES:
-        return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content=fail("INVALID_LEAVE_TYPE", f"假別必須為：{', '.join(VALID_TYPES)}"))
+    valid_types = _valid_types(db)
+    if body.type not in valid_types:
+        return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content=fail("INVALID_LEAVE_TYPE", f"假別必須為：{', '.join(valid_types)}"))
     if body.hours <= 0:
         return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content=fail("INVALID_HOURS", "時數必須大於 0"))
 
