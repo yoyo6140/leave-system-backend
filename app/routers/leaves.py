@@ -17,6 +17,8 @@ from app.leave_quota import get_all_quotas, get_anniversary_year_start, get_anni
 
 router = APIRouter(prefix="/leaves", tags=["leave"])
 
+MANAGER_ROLES = ("sup_admin", "admin")  # 可審核/查看所有人假單的角色
+
 # 編輯/取消允許的來源狀態；通過/退回/銷假允許的 (來源狀態, 目標狀態) -> action
 EDITABLE_STATUSES  = {"待審核", "已拒絕"}
 STATUS_TRANSITIONS = {
@@ -157,11 +159,11 @@ def _diff_changes(record: LeaveRecord, body) -> dict | None:
     status_code=status.HTTP_200_OK,
     summary="查詢請假紀錄列表",
     description=(
-        "預設：admin 可查所有人，員工只能查自己。支援狀態篩選、關鍵字搜尋與分頁。\n\n"
+        "預設：admin、sup_admin 可查所有人，員工只能查自己。支援狀態篩選、關鍵字搜尋與分頁。\n\n"
         "帶入 `mine=true` 時，無論角色一律強制只回傳登入者自己的紀錄"
-        "（即使是 admin 也只看到自己的）——用於「個人請假紀錄」頁面，"
-        "與 admin 專用的「員工請假紀錄／審核管理」查詢分開，避免混用。\n\n"
-        "帶入 `search` 時比對請假原因；查詢全公司紀錄時（admin 且未加 `mine`）"
+        "（即使是 admin、sup_admin 也只看到自己的）——用於「個人請假紀錄」頁面，"
+        "與 admin、sup_admin 專用的「員工請假紀錄／審核管理」查詢分開，避免混用。\n\n"
+        "帶入 `search` 時比對請假原因；查詢全公司紀錄時（admin、sup_admin 且未加 `mine`）"
         "同時比對申請人姓名／帳號。"
     ),
     response_model=LeaveListResponse,
@@ -195,7 +197,7 @@ def get_leaves(
 ):
     query = _leave_query(db)
 
-    query_all_users = not mine and current_user.role == "admin"
+    query_all_users = not mine and current_user.role in MANAGER_ROLES
     if not query_all_users:
         query = query.filter(LeaveRecord.user_id == current_user.id)
 
@@ -229,7 +231,7 @@ def get_leaves(
     "/{id}",
     status_code=status.HTTP_200_OK,
     summary="查詢單筆請假紀錄",
-    description="admin 可查任何人，員工只能查自己的",
+    description="admin、sup_admin 可查任何人，員工只能查自己的",
     response_model=LeaveResponse,
     responses={
         200: {
@@ -250,7 +252,7 @@ def get_leave(
     record = _leave_query(db).filter(LeaveRecord.id == id).first()
     if not record:
         return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content=fail("LEAVE_NOT_FOUND", "找不到請假紀錄"))
-    if current_user.role != "admin" and record.user_id != current_user.id:
+    if current_user.role not in MANAGER_ROLES and record.user_id != current_user.id:
         return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content=fail("FORBIDDEN", "無權限查看此紀錄"))
     return ok(LeaveOut.model_validate(record))
 
@@ -279,6 +281,9 @@ def create_leave(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if current_user.role == "sup_admin":
+        return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content=fail("FORBIDDEN", "sup_admin 不可申請請假"))
+
     leave_type = _get_leave_type(db, body.type)
     if not leave_type:
         return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content=fail("INVALID_LEAVE_TYPE", f"假別必須為：{', '.join(_all_type_codes(db))}"))
@@ -384,8 +389,8 @@ def update_leave(
     status_code=status.HTTP_200_OK,
     summary="審核或銷假",
     description=(
-        "admin 限定。「待審核」可通過或退回；「已通過」可銷假。"
-        "審核人自動帶入目前登入的 admin，不接受前端指定。"
+        "admin、sup_admin 限定。「待審核」可通過或退回；「已通過」可銷假。"
+        "審核人自動帶入目前登入者，不接受前端指定。"
         "退回、銷假時 `review_note` 必填。"
     ),
     response_model=LeaveResponse,
@@ -409,8 +414,8 @@ def update_leave_status(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if current_user.role != "admin":
-        return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content=fail("FORBIDDEN", "僅 admin 可審核請假"))
+    if current_user.role not in MANAGER_ROLES:
+        return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content=fail("FORBIDDEN", "僅 admin、sup_admin 可審核請假"))
 
     record = db.query(LeaveRecord).filter(LeaveRecord.id == id).first()
     if not record:
@@ -478,7 +483,7 @@ def get_leave_status_logs(
     record = db.query(LeaveRecord).filter(LeaveRecord.id == id).first()
     if not record:
         return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content=fail("LEAVE_NOT_FOUND", "找不到請假紀錄"))
-    if current_user.role != "admin" and record.user_id != current_user.id:
+    if current_user.role not in MANAGER_ROLES and record.user_id != current_user.id:
         return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content=fail("FORBIDDEN", "無權限查看此紀錄"))
 
     logs = db.query(LeaveStatusLog).filter(LeaveStatusLog.leave_id == id).order_by(LeaveStatusLog.changed_at).all()

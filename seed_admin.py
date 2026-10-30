@@ -18,7 +18,7 @@ else:
         username    = ADMIN_USERNAME,
         password    = hashed,
         name        = ADMIN_NAME,
-        role        = "admin",
+        role        = "sup_admin",
         email       = ADMIN_EMAIL,
         is_verified = True,
         gender      = "男",
