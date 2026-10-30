@@ -4,10 +4,17 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import User, PasswordResetToken
+from app.models import User, PasswordResetToken, UserLog
 from app.models.user import employee_no_seq
+from app.models.user_log import log_user_action
 from app.auth import get_current_user
-from app.schemas import UserCreate, UserOut, UserUpdate, UserStatusUpdate, UserListResponse, UserResponse, ok, fail
+from app.schemas import (
+    UserCreate, UserOut, UserUpdate, UserStatusUpdate, UserListResponse, UserResponse,
+    UserLogOut, UserLogListResponse, ok, fail,
+)
+
+# 修改這些欄位時，一般的 "update" 紀錄就寫入新舊值；id_number 只記「已修改」（規格第 8 節）
+MASKED_FIELDS = {"id_number"}
 
 router = APIRouter(tags=["user"])
 
@@ -139,6 +146,8 @@ def create_user(
         is_verified = True,
     )
     db.add(user)
+    db.flush()  # 取得 user.id
+    log_user_action(db, user_id=user.id, action="create", changed_by=current_user.id)
     db.commit()
     db.refresh(user)
     return ok(UserOut.model_validate(user))
@@ -207,6 +216,21 @@ def update_user(
     if db.query(User).filter(User.id_number == body.id_number, User.id != id).first():
         return JSONResponse(status_code=status.HTTP_409_CONFLICT, content=fail("ID_NUMBER_EXISTS", "身分證號碼已存在"))
 
+    # 一般欄位（name/email/gender/id_number/birth_date）的異動記成一筆 "update"；
+    # role、hire_date 各自是獨立的 action（規格的 user_logs.action 列舉值）
+    general_changes = {}
+    for field in ("name", "email", "gender", "id_number", "birth_date"):
+        old_val, new_val = getattr(user, field), getattr(body, field)
+        if old_val != new_val:
+            general_changes[field] = "已修改" if field in MASKED_FIELDS else [old_val, new_val]
+
+    if body.role != user.role:
+        log_user_action(db, user_id=user.id, action="update_role", changed_by=current_user.id, changes={"role": [user.role, body.role]})
+    if body.hire_date != user.hire_date:
+        log_user_action(db, user_id=user.id, action="update_hire_date", changed_by=current_user.id, changes={"hire_date": [user.hire_date, body.hire_date]})
+    if general_changes:
+        log_user_action(db, user_id=user.id, action="update", changed_by=current_user.id, changes=general_changes)
+
     user.name       = body.name
     user.role       = body.role
     user.email      = body.email
@@ -261,6 +285,52 @@ def update_user_status(
     user.is_active = body.is_active
     if not body.is_active:
         db.query(PasswordResetToken).filter(PasswordResetToken.user_id == id).delete()
+    log_user_action(
+        db, user_id=user.id,
+        action="activate" if body.is_active else "deactivate",
+        changed_by=current_user.id,
+    )
     db.commit()
     db.refresh(user)
     return ok(UserOut.model_validate(user))
+
+
+@router.get(
+    "/user/{id}/logs",
+    status_code=status.HTTP_200_OK,
+    response_model=UserLogListResponse,
+    summary="查詢帳號異動紀錄",
+    description="admin、sup_admin 限定。查詢一個帳號的建立、修改、停用、啟用、密碼變更等歷史紀錄",
+    responses={
+        200: {
+            "description": "查詢成功",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": True,
+                        "data": [
+                            {
+                                "id": "log-uuid-example",
+                                "action": "create",
+                                "changes": None,
+                                "changed_by": 1,
+                                "changed_at": "2024-06-20T10:00:00",
+                            }
+                        ],
+                    }
+                }
+            },
+        },
+    },
+)
+def get_user_logs(
+    id: int,
+    db: Session = Depends(get_db),
+    _: User     = Depends(require_admin),
+):
+    user = db.query(User).filter(User.id == id).first()
+    if not user:
+        return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content=fail("USER_NOT_FOUND", "找不到使用者"))
+
+    logs = db.query(UserLog).filter(UserLog.user_id == id).order_by(UserLog.changed_at).all()
+    return ok([UserLogOut.model_validate(l) for l in logs])
