@@ -7,9 +7,10 @@ from sqlalchemy.orm import Session
 import bcrypt
 from app.database import get_db
 from app.models import User, PasswordResetToken
+from app.models.user_log import log_user_action
 from app.schemas import (
     LoginRequest, LoginResponse, LoginErrorResponse, SuccessResponse,
-    UserOut, ForgotPasswordRequest, ResetPasswordRequest, MessageResponse,
+    UserOut, ForgotPasswordRequest, ResetPasswordRequest, ChangePasswordRequest, MessageResponse,
     ok, fail,
 )
 from app.auth import verify_password, create_token, get_current_user
@@ -183,6 +184,43 @@ def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db)):
     user.password = bcrypt.hashpw(body.new_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
     db.delete(record)
+    # 忘記密碼重設時，操作人是本人
+    log_user_action(db, user_id=user.id, action="reset_password", changed_by=user.id, changes={"password": "已修改"})
     db.commit()
 
     return ok({"message": "密碼已成功重設，請重新登入"})
+
+
+@router.post(
+    "/change-password",
+    status_code=status.HTTP_200_OK,
+    summary="修改自己的密碼",
+    description="本人以舊密碼驗證後設定新密碼（6～12 字元），舊密碼不符回錯誤",
+    response_model=MessageResponse,
+    responses={
+        200: {
+            "description": "密碼修改成功",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": True,
+                        "data": {"message": "密碼已修改"},
+                    }
+                }
+            },
+        },
+    },
+)
+def change_password(
+    body: ChangePasswordRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if not verify_password(body.old_password, current_user.password):
+        return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content=fail("INVALID_PASSWORD", "舊密碼不正確"))
+
+    current_user.password = bcrypt.hashpw(body.new_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    log_user_action(db, user_id=current_user.id, action="change_password", changed_by=current_user.id, changes={"password": "已修改"})
+    db.commit()
+
+    return ok({"message": "密碼已修改"})
