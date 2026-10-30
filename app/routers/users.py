@@ -1,21 +1,26 @@
 import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import JSONResponse
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import User, PasswordResetToken
+from app.models.user import employee_no_seq
 from app.auth import get_current_user
 from app.schemas import UserCreate, UserOut, UserUpdate, UserStatusUpdate, UserListResponse, UserResponse, ok, fail
 
 router = APIRouter(tags=["user"])
 
+DEFAULT_PASSWORD = "6666666"
+MANAGER_ROLES    = ("sup_admin", "admin")  # 可以管理 employee 帳號、審核假單的角色
+
 _USER_EXAMPLE = {
     "id": 1,
-    "username": "john_doe",
+    "username": "A0001",
     "name": "John Doe",
     "role": "employee",
     "email": "john@example.com",
-    "gender": "male",
+    "gender": "男",
     "id_number": "A123456789",
     "hire_date": "2020-01-01",
     "birth_date": "1990-05-15",
@@ -24,9 +29,17 @@ _USER_EXAMPLE = {
 
 
 def require_admin(current_user=Depends(get_current_user)):
-    if current_user.role != "admin":
+    """admin、sup_admin 都算「管理端」，可以呼叫這些帳號管理 API；
+    admin 跟 sup_admin 之間更細的權限差異（能不能動到其他管理員帳號、改角色/受雇日期）
+    在各自路由裡另外檢查。"""
+    if current_user.role not in MANAGER_ROLES:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="權限不足")
     return current_user
+
+
+def next_employee_no(db: Session) -> str:
+    n = db.execute(select(employee_no_seq.next_value())).scalar()
+    return f"A{n:04d}"
 
 
 # ── 列表 ───────────────────────────────────────────────────────────────────────
@@ -101,18 +114,20 @@ def get_users(
 def create_user(
     body: UserCreate,
     db: Session = Depends(get_db),
-    _: User     = Depends(require_admin),
+    current_user: User = Depends(require_admin),
 ):
-    if db.query(User).filter(User.username == body.username).first():
-        return JSONResponse(status_code=status.HTTP_409_CONFLICT, content=fail("USERNAME_EXISTS", "帳號已存在"))
+    if body.role not in ("employee", "admin", "sup_admin"):
+        return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content=fail("INVALID_ROLE", "角色必須為 sup_admin／admin／employee"))
+    if body.role != "employee" and current_user.role != "sup_admin":
+        return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content=fail("FORBIDDEN", "僅 sup_admin 可建立 admin 或 sup_admin 帳號"))
     if db.query(User).filter(User.email == body.email).first():
         return JSONResponse(status_code=status.HTTP_409_CONFLICT, content=fail("EMAIL_EXISTS", "信箱已被使用"))
     if db.query(User).filter(User.id_number == body.id_number).first():
         return JSONResponse(status_code=status.HTTP_409_CONFLICT, content=fail("ID_NUMBER_EXISTS", "身分證號碼已存在"))
 
-    hashed = bcrypt.hashpw(body.password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    hashed = bcrypt.hashpw(DEFAULT_PASSWORD.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
     user = User(
-        username    = body.username,
+        username    = next_employee_no(db),
         password    = hashed,
         name        = body.name,
         role        = body.role,
@@ -170,19 +185,28 @@ def update_user(
     id: int,
     body: UserUpdate,
     db: Session = Depends(get_db),
-    _: User     = Depends(require_admin),
+    current_user: User = Depends(require_admin),
 ):
     user = db.query(User).filter(User.id == id).first()
     if not user:
         return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content=fail("USER_NOT_FOUND", "找不到使用者"))
+
+    # admin 不能管理 admin／sup_admin 帳號（含自己），只有 sup_admin 可以
+    if current_user.role != "sup_admin" and user.role in MANAGER_ROLES:
+        return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content=fail("FORBIDDEN", "僅 sup_admin 可管理管理員帳號"))
+
+    if body.role not in ("employee", "admin", "sup_admin"):
+        return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content=fail("INVALID_ROLE", "角色必須為 sup_admin／admin／employee"))
+
+    # 角色、受雇日期僅 sup_admin 可改；admin 呼叫時若嘗試變更一律 403
+    if current_user.role != "sup_admin" and (body.role != user.role or body.hire_date != user.hire_date):
+        return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content=fail("FORBIDDEN", "僅 sup_admin 可修改角色或受雇日期"))
+
     if db.query(User).filter(User.email == body.email, User.id != id).first():
         return JSONResponse(status_code=status.HTTP_409_CONFLICT, content=fail("EMAIL_EXISTS", "信箱已被使用"))
     if db.query(User).filter(User.id_number == body.id_number, User.id != id).first():
         return JSONResponse(status_code=status.HTTP_409_CONFLICT, content=fail("ID_NUMBER_EXISTS", "身分證號碼已存在"))
-    if db.query(User).filter(User.username == body.username, User.id != id).first():
-        return JSONResponse(status_code=status.HTTP_409_CONFLICT, content=fail("USERNAME_EXISTS", "帳號已被使用"))
 
-    user.username   = body.username
     user.name       = body.name
     user.role       = body.role
     user.email      = body.email
@@ -212,13 +236,27 @@ def update_user_status(
     id: int,
     body: UserStatusUpdate,
     db: Session = Depends(get_db),
-    admin: User = Depends(require_admin),
+    current_user: User = Depends(require_admin),
 ):
     user = db.query(User).filter(User.id == id).first()
     if not user:
         return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content=fail("USER_NOT_FOUND", "找不到使用者"))
-    if user.id == admin.id and not body.is_active:
+    if user.id == current_user.id and not body.is_active:
         return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content=fail("CANNOT_DEACTIVATE_SELF", "不可停用自己的帳號"))
+
+    # admin 不能啟用／停用 admin／sup_admin 帳號，只有 sup_admin 可以
+    if current_user.role != "sup_admin" and user.role in MANAGER_ROLES:
+        return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content=fail("FORBIDDEN", "僅 sup_admin 可管理管理員帳號"))
+
+    # 系統至少保留一個啟用中的 sup_admin，不能停用最後一個
+    if user.role == "sup_admin" and not body.is_active:
+        other_active_sup_admins = (
+            db.query(User)
+            .filter(User.role == "sup_admin", User.is_active.is_(True), User.id != user.id)
+            .count()
+        )
+        if other_active_sup_admins == 0:
+            return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content=fail("LAST_SUP_ADMIN", "系統至少要保留一個啟用中的 sup_admin"))
 
     user.is_active = body.is_active
     if not body.is_active:

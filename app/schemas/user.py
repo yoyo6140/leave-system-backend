@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class UserOut(BaseModel):
@@ -16,8 +16,6 @@ class UserOut(BaseModel):
     model_config = {"from_attributes": True}
 
 class UserCreate(BaseModel):
-    username:   str
-    password:   str = Field(min_length=6, max_length=12)
     name:       str
     role:       str = "employee"
     email:      str
@@ -27,7 +25,6 @@ class UserCreate(BaseModel):
     birth_date: str
 
 class UserUpdate(BaseModel):
-    username:   str
     name:       str
     role:       str
     email:      str
