@@ -8,21 +8,32 @@ import bcrypt
 from datetime import datetime, timezone
 from app.database import SessionLocal
 from app.models import User, LeaveRecord, LeaveStatusLog
+from app.routers.users import next_employee_no, DEFAULT_PASSWORD
+
+# 假別中文 -> leave_types.code（這份種子資料用中文比較好讀，實際存進去要轉成代碼）
+LEAVE_TYPE_CODE_BY_NAME = {
+    "特休": "annual",
+    "病假": "sick",
+    "事假": "personal",
+    "婚假": "marriage",
+    "喪假": "bereavement",
+    "公假": "official",
+    "其他": "other",
+}
 
 db = SessionLocal()
 
-# ── 取得 admin（作為審核人）────────────────────────────────────────────────────
-admin = db.query(User).filter(User.role == "admin").first()
+# ── 取得管理員（作為審核人）────────────────────────────────────────────────────
+admin = db.query(User).filter(User.role.in_(("sup_admin", "admin"))).first()
 if not admin:
-    print("❌ 找不到 admin 帳號，請先執行 reset_db.py")
+    print("❌ 找不到管理員帳號，請先執行 seed_admin.py")
     db.close()
     exit(1)
 
 # ── 員工資料 ──────────────────────────────────────────────────────────────────
 EMPLOYEES = [
     {
-        "username":   "chen_zhiming",
-        "password":   "pass1234",
+        "key":        "chen_zhiming",
         "name":       "陳志明",
         "email":      "chen.zhiming@company.com",
         "gender":     "男",
@@ -31,8 +42,7 @@ EMPLOYEES = [
         "birth_date": "1988-05-20",
     },
     {
-        "username":   "lin_meiling",
-        "password":   "pass1234",
+        "key":        "lin_meiling",
         "name":       "林美玲",
         "email":      "lin.meiling@company.com",
         "gender":     "女",
@@ -41,8 +51,7 @@ EMPLOYEES = [
         "birth_date": "1992-11-08",
     },
     {
-        "username":   "huang_jianhong",
-        "password":   "pass1234",
+        "key":        "huang_jianhong",
         "name":       "黃建宏",
         "email":      "huang.jianhong@company.com",
         "gender":     "男",
@@ -51,8 +60,7 @@ EMPLOYEES = [
         "birth_date": "1990-07-14",
     },
     {
-        "username":   "wang_yating",
-        "password":   "pass1234",
+        "key":        "wang_yating",
         "name":       "王雅婷",
         "email":      "wang.yating@company.com",
         "gender":     "女",
@@ -61,8 +69,7 @@ EMPLOYEES = [
         "birth_date": "1995-03-22",
     },
     {
-        "username":   "zhang_yuxuan",
-        "password":   "pass1234",
+        "key":        "zhang_yuxuan",
         "name":       "張宇軒",
         "email":      "zhang.yuxuan@company.com",
         "gender":     "男",
@@ -72,7 +79,7 @@ EMPLOYEES = [
     },
 ]
 
-# ── 請假紀錄（key=username）──────────────────────────────────────────────────
+# ── 請假紀錄（key 對應 EMPLOYEES 的 "key"，純內部索引，不是真正的帳號）──────────
 # status: 已通過 / 已拒絕 / 待審核 / 已取消
 LEAVE_RECORDS: dict[str, list[dict]] = {
     "chen_zhiming": [
@@ -166,14 +173,15 @@ def add_status_logs(leave: LeaveRecord, employee: User):
 
 # ── 建立員工與請假紀錄 ────────────────────────────────────────────────────────
 for emp_data in EMPLOYEES:
-    existing = db.query(User).filter(User.username == emp_data["username"]).first()
+    existing = db.query(User).filter(User.id_number == emp_data["id_number"]).first()
     if existing:
-        print(f"⚠️  [{emp_data['username']}] 已存在，略過")
+        print(f"⚠️  [{emp_data['name']}] 已存在，略過")
         continue
 
-    hashed = bcrypt.hashpw(emp_data["password"].encode(), bcrypt.gensalt()).decode()
+    # 帳號一律自動編號（A0001 起）、預設密碼一律 6666666，跟 POST /user 的規則一致
+    hashed = bcrypt.hashpw(DEFAULT_PASSWORD.encode(), bcrypt.gensalt()).decode()
     employee = User(
-        username    = emp_data["username"],
+        username    = next_employee_no(db),
         password    = hashed,
         name        = emp_data["name"],
         role        = "employee",
@@ -187,28 +195,28 @@ for emp_data in EMPLOYEES:
     db.add(employee)
     db.flush()  # 取得 employee.id
 
-    records = LEAVE_RECORDS.get(emp_data["username"], [])
+    records = LEAVE_RECORDS.get(emp_data["key"], [])
     for r in records:
-        reviewer = admin.name if r["status"] in ("已通過", "已拒絕") else None
+        reviewer_id = admin.id if r["status"] in ("已通過", "已拒絕") else None
         leave = LeaveRecord(
-            id         = str(uuid.uuid4()),
-            user_id    = employee.id,
-            type       = r["type"],
-            start_date = r["start"],
-            end_date   = r["end"],
-            hours      = r["hours"],
-            reason     = r.get("reason", ""),
-            status     = r["status"],
-            reviewer   = reviewer,
-            created_at = make_dt(r["start"]),
+            id          = str(uuid.uuid4()),
+            user_id     = employee.id,
+            type        = LEAVE_TYPE_CODE_BY_NAME[r["type"]],
+            start_date  = r["start"],
+            end_date    = r["end"],
+            hours       = r["hours"],
+            reason      = r.get("reason", ""),
+            status      = r["status"],
+            reviewer_id = reviewer_id,
+            created_at  = make_dt(r["start"]),
         )
         db.add(leave)
         db.flush()
         add_status_logs(leave, employee)
 
-    print(f"✅ {emp_data['name']}（{emp_data['username']}）+ {len(records)} 筆請假紀錄")
+    print(f"✅ {employee.name}（{employee.username}）+ {len(records)} 筆請假紀錄")
 
 db.commit()
 print("\n✅ 所有員工與請假資料建立完成")
-print("   預設密碼：pass1234")
+print(f"   預設密碼：{DEFAULT_PASSWORD}")
 db.close()

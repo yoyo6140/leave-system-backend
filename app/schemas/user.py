@@ -1,4 +1,6 @@
-from pydantic import BaseModel, Field
+from datetime import datetime
+from typing import Any
+from pydantic import BaseModel
 
 
 class UserOut(BaseModel):
@@ -16,8 +18,6 @@ class UserOut(BaseModel):
     model_config = {"from_attributes": True}
 
 class UserCreate(BaseModel):
-    username:   str
-    password:   str = Field(min_length=6, max_length=12)
     name:       str
     role:       str = "employee"
     email:      str
@@ -27,7 +27,6 @@ class UserCreate(BaseModel):
     birth_date: str
 
 class UserUpdate(BaseModel):
-    username:   str
     name:       str
     role:       str
     email:      str
@@ -52,3 +51,16 @@ class UserListResponse(BaseModel):
 class UserResponse(BaseModel):
     success: bool = True
     data:    UserOut
+
+class UserLogOut(BaseModel):
+    id:         str
+    action:     str
+    changes:    dict[str, Any] | None = None
+    changed_by: int | None = None
+    changed_at: datetime
+
+    model_config = {"from_attributes": True}
+
+class UserLogListResponse(BaseModel):
+    success: bool = True
+    data:    list[UserLogOut]

@@ -5,15 +5,13 @@ services:
       - "8000:8000"
     env_file:
       - .env
-    environment:
-      DATABASE_URL: postgresql+psycopg2://leave_user:leave_pass@db:5432/leave_system
-    depends_on:
-      db:
-        condition: service_healthy
     volumes:
       - .:/app
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
+  # 本機測試用的 Postgres（非必要）：api 現在直接吃 .env 的 DATABASE_URL，
+  # 預設連去 Supabase。如果想改回連這個本機容器，把上面 api 區塊的
+  # environment.DATABASE_URL 加回來指向 db:5432 即可。
   db:
     image: postgres:16-alpine
     environment:

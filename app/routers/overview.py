@@ -23,7 +23,7 @@ _EXAMPLE = {
                 "id": "abc123",
                 "user_id": 1,
                 "user_name": "王小明",
-                "type": "特休",
+                "type": "annual",
                 "hours": 8,
                 "start_date": "2024-07-01",
                 "end_date": "2024-07-01",
