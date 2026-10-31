@@ -74,12 +74,12 @@ def get_overview(
         .all()
     )
 
-    # 本月已核准數
+    # 本月已核准數：用審核時間（reviewed_at）篩，反映的是本月審核量，不是本月申請量
     approved_this_month = (
         db.query(LeaveRecord)
         .filter(
             LeaveRecord.status == "已通過",
-            LeaveRecord.created_at >= month_start_dt,
+            LeaveRecord.reviewed_at >= month_start_dt,
         )
         .count()
     )
