@@ -29,4 +29,4 @@ services:
       - key: MAIL_PORT
         value: "587"
       - key: FRONTEND_URL
-        value: "https://leave-system-frontend-two.vercel.app"
+        value: "https://leaves-system.yoyodev.win"

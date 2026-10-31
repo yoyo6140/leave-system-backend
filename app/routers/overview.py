@@ -54,7 +54,7 @@ def get_overview(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if current_user.role != "admin":
+    if current_user.role not in ("admin", "sup_admin"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="權限不足")
 
     now = date.today()
