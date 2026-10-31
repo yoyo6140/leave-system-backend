@@ -117,10 +117,10 @@ def get_user_quota(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if current_user.role != "admin":
+    if current_user.role not in ("admin", "sup_admin"):
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
-            content=fail("FORBIDDEN", "僅 admin 可查詢其他員工的假別額度"),
+            content=fail("FORBIDDEN", "僅 admin、sup_admin 可查詢其他員工的假別額度"),
         )
 
     user = db.query(User).filter(User.id == user_id).first()
