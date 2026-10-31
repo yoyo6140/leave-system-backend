@@ -211,6 +211,11 @@ def update_user(
     if current_user.role != "sup_admin" and (body.role != user.role or body.hire_date != user.hire_date):
         return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content=fail("FORBIDDEN", "僅 sup_admin 可修改角色或受雇日期"))
 
+    # 不可修改自己的角色：role 是即時從 DB 查（JWT 只帶 user id），改掉自己的角色下一個請求就立刻生效，
+    # 若剛好是唯一的 sup_admin 會直接把自己鎖在管理功能外面，無法回頭修正
+    if user.id == current_user.id and body.role != user.role:
+        return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content=fail("CANNOT_CHANGE_OWN_ROLE", "不可修改自己的角色"))
+
     if db.query(User).filter(User.email == body.email, User.id != id).first():
         return JSONResponse(status_code=status.HTTP_409_CONFLICT, content=fail("EMAIL_EXISTS", "信箱已被使用"))
     if db.query(User).filter(User.id_number == body.id_number, User.id != id).first():
