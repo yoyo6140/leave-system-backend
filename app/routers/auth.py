@@ -1,6 +1,6 @@
 import secrets
 from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
@@ -108,6 +108,14 @@ def get_me(current_user: User = Depends(get_current_user)):
     return current_user
 
 
+async def _send_reset_email_safe(to: str, token: str) -> None:
+    """背景寄信：SMTP 未設定、連線逾時或寄送失敗都吞掉，不能讓背景例外洩漏帳號是否存在，也不能擋住 API 回應"""
+    try:
+        await send_reset_password_email(to=to, token=token)
+    except Exception:
+        pass
+
+
 @router.post(
     "/forgot-password",
     status_code=status.HTTP_200_OK,
@@ -128,7 +136,11 @@ def get_me(current_user: User = Depends(get_current_user)):
         },
     },
 )
-async def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_db)):
+async def forgot_password(
+    body: ForgotPasswordRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
     user = db.query(User).filter(User.email == body.email).first()
 
     # 無論信箱是否存在或帳號是否停用，都回傳相同訊息，避免帳號枚舉攻擊
@@ -141,10 +153,8 @@ async def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get
         db.add(PasswordResetToken(user_id=user.id, token=token, expires_at=expires_at))
         db.commit()
 
-        try:
-            await send_reset_password_email(to=user.email, token=token)
-        except Exception:
-            pass  # SMTP 未設定或失敗時不中斷，避免洩漏帳號是否存在
+        # 寄信丟到背景執行：SMTP 連線卡住或逾時不會讓這支 API 的回應跟著卡在 pending
+        background_tasks.add_task(_send_reset_email_safe, user.email, token)
 
     return ok({"message": "若此信箱已註冊，您將收到密碼重設信件"})
 
