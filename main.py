@@ -27,6 +27,7 @@ ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://localhost:3001",
     "https://leave-system-frontend-two.vercel.app",
+    "https://leaves-system.yoyodev.win",
 ]
 
 app.add_middleware(
