@@ -1,16 +1,17 @@
 from datetime import date, datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
 from app.database import get_db
 from app.models import User, LeaveRecord
 from app.schemas import ok
-from app.schemas.overview import OverviewResponse
+from app.schemas.overview import OverviewResponse, MonthlyLeaveStatsResponse
 
 router = APIRouter(prefix="/overview", tags=["overview"])
+
+MANAGER_ROLES = ("admin", "sup_admin")
 
 _EXAMPLE = {
     "success": True,
@@ -30,9 +31,14 @@ _EXAMPLE = {
                 "created_at": "2024-06-20T10:00:00+00:00",
             }
         ],
-        "top_leave_hours": [
-            {"user_id": 1, "name": "王小明", "hours": 80}
-        ],
+    },
+}
+
+_MONTHLY_EXAMPLE = {
+    "success": True,
+    "data": {
+        "year": 2026,
+        "months": [{"month": m, "count": 0} for m in range(1, 13)],
     },
 }
 
@@ -41,7 +47,7 @@ _EXAMPLE = {
     "",
     status_code=status.HTTP_200_OK,
     summary="管理員總覽",
-    description="admin 限定。回傳待審核數、本月核准數、員工人數、待審核列表、年度請假時數排行（前五名）",
+    description="admin 限定。回傳待審核數、本月核准數、員工人數、待審核列表",
     response_model=OverviewResponse,
     responses={
         200: {
@@ -54,7 +60,7 @@ def get_overview(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if current_user.role not in ("admin", "sup_admin"):
+    if current_user.role not in MANAGER_ROLES:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="權限不足")
 
     now = date.today()
@@ -84,16 +90,6 @@ def get_overview(
     # 使用者 id → name 對照表
     user_map: dict[int, str] = {u.id: u.name for u in db.query(User).all()}
 
-    # 年度已核准時數排行（前五名）
-    top_rows = (
-        db.query(LeaveRecord.user_id, func.sum(LeaveRecord.hours).label("total_hours"))
-        .filter(LeaveRecord.status == "已通過")
-        .group_by(LeaveRecord.user_id)
-        .order_by(func.sum(LeaveRecord.hours).desc())
-        .limit(5)
-        .all()
-    )
-
     pending_list = [
         {
             "id":         r.id,
@@ -108,19 +104,57 @@ def get_overview(
         for r in pending_records
     ]
 
-    top_leave_hours = [
-        {
-            "user_id": uid,
-            "name":    user_map.get(uid, f"#{uid}"),
-            "hours":   int(total),
-        }
-        for uid, total in top_rows
-    ]
-
     return ok({
         "pending_count":       len(pending_records),
         "approved_this_month": approved_this_month,
         "employee_count":      employee_count,
         "pending_list":        pending_list,
-        "top_leave_hours":     top_leave_hours,
     })
+
+
+# ── 每月請假次數統計（獨立 API，可依年度篩選，不跟上面的總覽綁在一起）─────────────
+
+@router.get(
+    "/leave-count-monthly",
+    status_code=status.HTTP_200_OK,
+    summary="每月請假次數統計",
+    description=(
+        "admin、sup_admin 限定。依指定年度（預設今年），回傳 1~12 月各月"
+        "已通過的請假次數，讓管理者看出哪個月是請假尖峰。\n\n"
+        "每張假單依 `start_date` 歸屬到當月計一次，跟額度期間的歸屬規則一致。"
+    ),
+    response_model=MonthlyLeaveStatsResponse,
+    responses={
+        200: {
+            "description": "查詢成功",
+            "content": {"application/json": {"example": _MONTHLY_EXAMPLE}},
+        },
+    },
+)
+def get_leave_count_monthly(
+    year: int = Query(default=None, description="要查詢的年度，預設今年"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if current_user.role not in MANAGER_ROLES:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="權限不足")
+
+    target_year = year or date.today().year
+
+    records = (
+        db.query(LeaveRecord.start_date)
+        .filter(
+            LeaveRecord.status == "已通過",
+            LeaveRecord.start_date.like(f"{target_year}-%"),
+        )
+        .all()
+    )
+
+    count_by_month: list[int] = [0] * 12
+    for (start_date,) in records:
+        month_index = int(start_date[5:7]) - 1
+        count_by_month[month_index] += 1
+
+    months = [{"month": m + 1, "count": count_by_month[m]} for m in range(12)]
+
+    return ok({"year": target_year, "months": months})
