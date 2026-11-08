@@ -13,6 +13,8 @@ from app.routers.quota import router as quota_router
 from app.routers.overview import router as overview_router
 from app.routers.chat import router as chat_router
 
+from app.routers.kb import router as kb_router
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -44,6 +46,7 @@ app.include_router(leaves_router)
 app.include_router(quota_router)
 app.include_router(overview_router)
 app.include_router(chat_router)
+app.include_router(kb_router)
 
 
 @app.exception_handler(HTTPException)

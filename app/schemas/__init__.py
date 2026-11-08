@@ -3,3 +3,4 @@ from .auth import LoginRequest, LoginData, LoginResponse, LoginErrorResponse, Fo
 from .user import UserOut, UserCreate, UserUpdate, UserStatusUpdate, UserListData, UserListResponse, UserResponse, UserLogOut, UserLogListResponse
 from .leave import LeaveCreate, LeaveUpdate, LeaveStatusUpdate, LeaveOut, LeaveStatusLogOut, LeaveListData, LeaveListResponse, LeaveResponse, LeaveStatusLogListResponse
 from .quota import QuotaItem, LeaveQuotaOut, LeaveQuotaResponse
+from .kb import KbDocumentOut, KbDocumentListData, KbDocumentListResponse, KbDocumentResponse, KbDocumentCreate

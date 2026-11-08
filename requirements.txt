@@ -9,3 +9,6 @@ python-multipart
 fastapi-mail
 pydantic[email]
 google-generativeai
+
+alembic
+pgvector
