@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from sqlalchemy import String, DateTime, ForeignKey, Integer
-from sqlalchemy.dialects.postgresql import UUID
+
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 class KbDocument(Base):
     __tablename__ = "kb_documents"
 
-    id:            Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id:            Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     title:         Mapped[str]       = mapped_column(String(200), nullable=False)
     source:        Mapped[str]       = mapped_column(String(500), nullable=False)
     status:        Mapped[str]       = mapped_column(String(20), nullable=False, default="processing")

@@ -4,7 +4,7 @@ import uuid
 from typing import TYPE_CHECKING
 
 from sqlalchemy import String, Integer, ForeignKey
-from sqlalchemy.dialects.postgresql import UUID
+
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from pgvector.sqlalchemy import Vector
 
@@ -17,11 +17,10 @@ if TYPE_CHECKING:
 class KbChunk(Base):
     __tablename__ = "kb_chunks"
 
-    id:              Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    document_id:     Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("kb_documents.id"), nullable=False, index=True)
+    id:              Mapped[str]       = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    document_id:     Mapped[str]       = mapped_column(String, ForeignKey("kb_documents.id"), nullable=False, index=True)    
     chunk_index:     Mapped[int]       = mapped_column(Integer, nullable=False)
     content:         Mapped[str]       = mapped_column(String, nullable=False)
     embedding:       Mapped[list[float]] = mapped_column(Vector(1024), nullable=True)
     embedding_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
-
     document: Mapped[KbDocument] = relationship("KbDocument")
