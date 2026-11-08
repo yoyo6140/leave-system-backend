@@ -18,7 +18,7 @@ class KbChunk(Base):
     __tablename__ = "kb_chunks"
 
     id:              Mapped[str]       = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    document_id:     Mapped[str]       = mapped_column(String, ForeignKey("kb_documents.id"), nullable=False, index=True)    
+    document_id:     Mapped[str]       = mapped_column(String, ForeignKey("kb_documents.id", ondelete="CASCADE"), nullable=False, index=True)    
     chunk_index:     Mapped[int]       = mapped_column(Integer, nullable=False)
     content:         Mapped[str]       = mapped_column(String, nullable=False)
     embedding:       Mapped[list[float]] = mapped_column(Vector(1024), nullable=True)
