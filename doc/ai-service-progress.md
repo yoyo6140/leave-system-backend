@@ -23,10 +23,25 @@
 - `alembic revision --autogenerate` 產生型別變更的 migration；因為涉及外鍵、且表目前是空的，手動改成 `drop_table` + `create_table` 重建（而不是用 `alter_column`，避免 Postgres 的 UUID → String 隱式轉型問題）
 - `alembic upgrade head` 套用，連線驗證兩張表的 `id`/`document_id` 都變成 `character varying`
 
+另外補一支手動 migration（非 autogenerate，因為 Alembic 預設不比較外鍵的 `ondelete`）：`KbChunk.document_id` 的外鍵加上 `ondelete="CASCADE"`，刪除 `KbDocument` 時底下的 `KbChunk` 會自動一併刪除，不用在程式碼裡手動先刪子資料。
+
+## 5e36643 — feat: 新增 kb_documents 的 CRUD API 骨架，上傳改為直接貼文字
+
+對應規格第 6 節開發步驟「3」（部分）。
+
+**設計決定**：上傳規章原本設計成檔案上傳（`multipart/form-data`），後來改成直接貼文字（JSON body：`{"title", "content"}`）。不用處理 PDF/docx 解析，admin 直接把規章文字貼進去即可，`source` 欄位固定存 `"manual"`。
+
+**做了什麼**：
+- 新增 `app/schemas/kb.py`：`KbDocumentOut`、`KbDocumentCreate`、`KbDocumentListData`、`KbDocumentListResponse`、`KbDocumentResponse`，註冊進 `app/schemas/__init__.py`
+- 新增 `app/routers/kb.py`：`GET /kb/documents`（列表，所有角色可查）、`POST /kb/documents`（新增，admin 限定，`require_admin`）、`DELETE /kb/documents/{id}`（刪除，admin 限定），註冊進 `main.py`
+- 本機用 Swagger UI（`/docs`）實測三支 API：新增成功回傳正確格式（`id` 是字串 UUID）、列表能撈到剛新增的資料、刪除成功且能正確觸發前面設定的 cascade
+
 **分支**：`feature/kb-pgvector-migration`，尚未 push
 
 **還沒做**（規格第 6 節後續步驟）：
-- 步驟 3：規章上傳 API（`POST /kb/documents`），背景任務自動切段、向量化
+- `process_document` 背景任務本體：切段（`app/ai/ingest.py`）→ 呼叫 embedding API（`app/ai/client.py`）→ 寫入 `kb_chunks`，目前 `upload_document`/`create_document` 裡只有 `TODO` 註解
+- 檔案型別/大小限制（目前骨架階段完全沒限制，之後要補）
 - 步驟 4、5：檢索邏輯（`app/ai/retrieval.py`）與測試問題集
 - 步驟 7：`/chat` 改接 Modal、移除 Gemini
+- `PUT /kb/documents/{id}`、`POST /kb/documents/{id}/retry`（規格第 5 節，骨架階段還沒做）
 - `leave-system-inference` 那邊：dev/prod 分環境、分 key（目前只有一組 dev 用的 secret）
