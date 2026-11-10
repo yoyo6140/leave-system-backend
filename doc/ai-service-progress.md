@@ -36,10 +36,23 @@
 - 新增 `app/routers/kb.py`：`GET /kb/documents`（列表，所有角色可查）、`POST /kb/documents`（新增，admin 限定，`require_admin`）、`DELETE /kb/documents/{id}`（刪除，admin 限定），註冊進 `main.py`
 - 本機用 Swagger UI（`/docs`）實測三支 API：新增成功回傳正確格式（`id` 是字串 UUID）、列表能撈到剛新增的資料、刪除成功且能正確觸發前面設定的 cascade
 
-**分支**：`feature/kb-pgvector-migration`，尚未 push
+**分支**：`feature/kb-pgvector-migration`（已合併，PR #46）
+
+## ed7ee76 — feat: 新增 app/ai/client.py，封裝呼叫 Modal embedding API 的介面
+
+對應規格第 6 節開發步驟「3」（部分）。
+
+**做了什麼**：
+- `pip install httpx`，補進 `requirements.txt`
+- `.env` 補 `EMBEDDING_BASE_URL`、`EMBEDDING_API_KEY`（對應 `leave-system-inference` 的 embedding endpoint 與 key），`.env.example` 補對應佔位版本
+- 新增 `app/ai/__init__.py`、`app/ai/client.py`：`embed(texts, kind)` 函式，`kind="query"`/`"passage"` 對應 Modal 那邊的前綴邏輯，`timeout=30` 預留冷啟動時間
+- 本機測試：`load_dotenv()` 後 import 該模組確認環境變數有讀到（過程中發現 `.env` 裡網址太長複製貼上時斷行，導致 `python-dotenv` 解析警告，已修正）
+
+**分支**：`feature/ai-embedding-modal`，尚未 push
 
 **還沒做**（規格第 6 節後續步驟）：
-- `process_document` 背景任務本體：切段（`app/ai/ingest.py`）→ 呼叫 embedding API（`app/ai/client.py`）→ 寫入 `kb_chunks`，目前 `upload_document`/`create_document` 裡只有 `TODO` 註解
+- `app/ai/ingest.py`：切段邏輯
+- `process_document` 背景任務本體：切段 → 呼叫 `app/ai/client.py` 的 `embed()` → 寫入 `kb_chunks`，目前 `create_document` 裡只有 `TODO` 註解
 - 檔案型別/大小限制（目前骨架階段完全沒限制，之後要補）
 - 步驟 4、5：檢索邏輯（`app/ai/retrieval.py`）與測試問題集
 - 步驟 7：`/chat` 改接 Modal、移除 Gemini

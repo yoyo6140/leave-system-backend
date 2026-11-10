@@ -8,6 +8,10 @@ from app.schemas import KbDocumentOut, KbDocumentCreate, KbDocumentListResponse,
 from app.auth import get_current_user
 from app.routers.users import require_admin
 
+from app.ai.ingest import split_into_chunks
+from app.ai.client import embed
+from app.models import KbChunk
+
 router = APIRouter(prefix="/kb", tags=["kb"])
 
 
@@ -34,7 +38,38 @@ def list_documents(
         "data": [KbDocumentOut.model_validate(d) for d in items],
     })
 
+def _process_document(document_id: str, content: str):
+    from app.database import SessionLocal
 
+    db = SessionLocal()
+    try:
+        document = db.query(KbDocument).filter(KbDocument.id == document_id).first()
+        if not document:
+            return
+
+        chunks = split_into_chunks(content)
+        embeddings = embed(chunks, kind="passage")
+
+        for i, (chunk_text, vector) in enumerate(zip(chunks, embeddings)):
+            db.add(KbChunk(
+                document_id=document_id,
+                chunk_index=i,
+                content=chunk_text,
+                embedding=vector,
+                embedding_model="intfloat/multilingual-e5-large-instruct",
+            ))
+
+        document.status = "ready"
+        db.commit()
+    except Exception as e:
+        document = db.query(KbDocument).filter(KbDocument.id == document_id).first()
+        if document:
+            document.status = "failed"
+            document.error_message = str(e)
+            db.commit()
+    finally:
+        db.close()
+        
 @router.post(
     "/documents",
     status_code=status.HTTP_201_CREATED,
@@ -61,10 +96,7 @@ def create_document(
     db.commit()
     db.refresh(document)
 
-    # TODO: background_tasks.add_task(process_document, document.id, body.content)
-    # process_document：切段（app/ai/ingest.py）→ 呼叫 embedding API → 寫入 kb_chunks，
-    # 成功時 status 改 ready，失敗時改 failed + error_message
-
+    background_tasks.add_task(_process_document, document.id, body.content)
     return ok(KbDocumentOut.model_validate(document))
 
 
