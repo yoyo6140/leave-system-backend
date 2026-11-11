@@ -69,7 +69,7 @@ def _process_document(document_id: str, content: str):
             db.commit()
     finally:
         db.close()
-        
+
 @router.post(
     "/documents",
     status_code=status.HTTP_201_CREATED,
@@ -88,6 +88,7 @@ def create_document(
 
     document = KbDocument(
         title=body.title,
+        content=body.content,
         source="manual",
         status="processing",
         uploaded_by=current_user.id,
@@ -120,3 +121,30 @@ def delete_document(
     db.delete(document)
     db.commit()
     return ok({"message": "規章已刪除"})
+
+@router.post(
+    "/documents/{id}/retry",
+    status_code=status.HTTP_200_OK,
+    description="admin 限定，只能對status為failed的文件使用",
+    response_model=KbDocumentResponse,
+)
+def retry_document(
+    id: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User  = Depends(require_admin) 
+):
+    document = db.query(KbDocument).filter(KbDocument.id == id).first()
+    if not document:
+        return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content=fail("NOT_FOUND", "找不到此規章文件"))
+    if document.status != "failed":
+        return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content=fail("NOT_FAILED", "只有失敗的文件才能重新向量化"))
+
+    document.status = "processing"
+    document.error_message = None
+    db.commit()
+    db.refresh(document)
+
+    background_tasks.add_task(_process_document, document.id, document.content)
+    return ok(KbDocumentOut.model_validate(document))
+    

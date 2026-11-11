@@ -18,6 +18,7 @@ class KbDocument(Base):
 
     id:            Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     title:         Mapped[str]       = mapped_column(String(200), nullable=False)
+    content:       Mapped[str] = mapped_column(String, nullable=False)
     source:        Mapped[str]       = mapped_column(String(500), nullable=False)
     status:        Mapped[str]       = mapped_column(String(20), nullable=False, default="processing")
     error_message: Mapped[str | None] = mapped_column(String, nullable=True)
