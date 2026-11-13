@@ -48,13 +48,35 @@
 - 新增 `app/ai/__init__.py`、`app/ai/client.py`：`embed(texts, kind)` 函式，`kind="query"`/`"passage"` 對應 Modal 那邊的前綴邏輯，`timeout=30` 預留冷啟動時間
 - 本機測試：`load_dotenv()` 後 import 該模組確認環境變數有讀到（過程中發現 `.env` 裡網址太長複製貼上時斷行，導致 `python-dotenv` 解析警告，已修正）
 
-**分支**：`feature/ai-embedding-modal`，尚未 push
+**分支**：`feature/ai-embedding-modal`
+
+## 86085a7 — feat: 串接切段與 embedding，POST /kb/documents 完整寫入 kb_chunks
+
+對應規格第 6 節開發步驟「3」。
+
+**做了什麼**：
+- 新增 `app/ai/ingest.py`：`split_into_chunks(text, max_chars, overlap)`，先按空行分段，過長段落用固定長度＋重疊切開
+- `kb.py` 新增 `_process_document(document_id, content)` 背景任務：切段 → 呼叫 `embed(chunks, kind="passage")` → 寫入 `KbChunk`（含 `embedding_model`）→ 文件狀態改 `ready`；失敗則狀態改 `failed` 並記錄 `error_message`
+- `create_document` 改成呼叫 `background_tasks.add_task(_process_document, ...)`
+- 實測：用 Swagger UI 建立含兩段文字的規章，確認 `kb_chunks` 正確寫入 2 筆、`vector_dims(embedding) = 1024`
+- 過程中踩到一個坑：`.env` 的 `EMBEDDING_BASE_URL` 不小心把測試用的 `Invoke-RestMethod -Uri "..."` 指令本身也複製貼進去了，導致 `httpx` 報「URL 缺少協定」；清乾淨後重試立刻成功
+
+## 2b9ddba — feat: 補上 kb_documents 的 content 欄位與 retry API
+
+**問題**：`KbDocument` 沒有存原始文字，`POST /kb/documents/{id}/retry`（規格第 5 節）需要重新切段向量化時，沒有原文可用。
+
+**做了什麼**：
+- `KbDocument` 新增 `content: Mapped[str]`（`NOT NULL`）欄位
+- `alembic revision --autogenerate` 產生 migration；因為表裡已有測試資料，`NOT NULL` 欄位加不進去，先清空測試資料再套用
+- `create_document` 新增時把 `body.content` 一併存進這個欄位
+- 新增 `POST /kb/documents/{id}/retry`：只允許 `status == "failed"` 的文件重試，把狀態改回 `processing`、清空 `error_message`，用 `document.content`（從資料庫讀回原文，不是 request body）重新丟進 `_process_document`
+- 過程中踩到環境變數殘留的坑：本機某個 PowerShell session 曾經手動設過 `$env:DATABASE_URL`，導致 `.env` 換了新密碼後 `alembic` 仍連線失敗（`python-dotenv` 預設不覆蓋已存在的環境變數），重開一個新終端機才解決
+- 實測：Modal 沒啟動時建立的文件正確顯示 `status: "failed"`，`error_message` 是 Modal 回的 404（`modal serve` 的網址在服務關閉後會失效）；retry 的程式邏輯已確認無語法錯誤，實際重試成功的流程留待之後需要時再測
 
 **還沒做**（規格第 6 節後續步驟）：
-- `app/ai/ingest.py`：切段邏輯
-- `process_document` 背景任務本體：切段 → 呼叫 `app/ai/client.py` 的 `embed()` → 寫入 `kb_chunks`，目前 `create_document` 裡只有 `TODO` 註解
-- 檔案型別/大小限制（目前骨架階段完全沒限制，之後要補）
+- 檔案型別/大小限制（目前完全沒限制，之後要補）
 - 步驟 4、5：檢索邏輯（`app/ai/retrieval.py`）與測試問題集
 - 步驟 7：`/chat` 改接 Modal、移除 Gemini
-- `PUT /kb/documents/{id}`、`POST /kb/documents/{id}/retry`（規格第 5 節，骨架階段還沒做）
+- `PUT /kb/documents/{id}`（規格第 5 節）
 - `leave-system-inference` 那邊：dev/prod 分環境、分 key（目前只有一組 dev 用的 secret）
+- 待確認：`modal serve` 目前只適合本機開發期間使用，等這些功能都穩定後要考慮換成 `modal deploy` 正式部署，不然每次重開終端機／關機都要重啟
