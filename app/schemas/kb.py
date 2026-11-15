@@ -34,3 +34,7 @@ class KbDocumentResponse(BaseModel):
 class KbDocumentCreate(BaseModel):
     title:   str
     content: str
+
+class KbDocumentUpdate(BaseModel):
+    title: str | None = None
+    content: str | None = None

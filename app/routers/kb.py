@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import KbDocument, User
-from app.schemas import KbDocumentOut, KbDocumentCreate, KbDocumentListResponse, KbDocumentResponse, MessageResponse, ok, fail
+from app.schemas import KbDocumentOut, KbDocumentCreate, KbDocumentListResponse, KbDocumentResponse, MessageResponse,KbDocumentUpdate, ok, fail
 from app.auth import get_current_user
 from app.routers.users import require_admin
 
@@ -101,6 +101,47 @@ def create_document(
     return ok(KbDocumentOut.model_validate(document))
 
 
+@router.put(
+        "/documents/{id}",
+        status_code=status.HTTP_200_OK,
+        summary="修改規章",
+        description="admin限定",
+        response_model=KbDocumentResponse
+)
+def update_document(
+    id: str,
+    body: KbDocumentUpdate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    document = db.query(KbDocument).filter(KbDocument.id == id).first()
+    if not document:
+        return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content=fail("NOT_FOUND", "找不到此規章文件"))
+    if body.content is not None and not body.content.strip():
+        return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content=fail("EMPTY_CONTENT", "內容不可為空"))
+
+    needs_revectorize = body.content is not None and body.content != document.content
+
+    if body.title is not None:
+        document.title = body.title
+    if body.content is not None:
+        document.content = body.content
+
+    if needs_revectorize:
+        db.query(KbChunk).filter(KbChunk.document_id == id).delete()
+        document.status = "processing"
+        document.error_message = None
+
+
+    db.add(document)
+    db.commit()
+    db.refresh(document)
+
+    if needs_revectorize:
+        background_tasks.add_task(_process_document, document.id, body.content)
+    return ok(KbDocumentOut.model_validate(document))
+    
 
 @router.delete(
     "/documents/{id}",
@@ -147,4 +188,6 @@ def retry_document(
 
     background_tasks.add_task(_process_document, document.id, document.content)
     return ok(KbDocumentOut.model_validate(document))
+
+
     
