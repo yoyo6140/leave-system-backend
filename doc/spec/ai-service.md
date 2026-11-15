@@ -64,23 +64,36 @@ Oct 29, 2026 · @yoyo
  
 | 表 | 欄位 | 說明 |
 | --- | --- | --- |
-| `kb_documents` | `id` UUID PK、`title`、`source`、`status`（`processing`／`ready`／`failed`）、`error_message`、`uploaded_by` FK、`created_at`、`updated_at` | 規章文件 |
+| `kb_documents` | `id` UUID PK、`title`、`source`、`type`（`rule`／`raw`／`letter`，預設 `rule`）、`status`（`processing`／`ready`／`failed`）、`error_message`、`uploaded_by` FK、`created_at`、`updated_at` | 規章文件 |
 | `kb_chunks` | `id` UUID PK、`document_id` FK、`chunk_index`、`content`、`embedding vector(1024)`、`embedding_model` | 段落與向量；1024 維對應 multilingual-e5-large-instruct |
  
 - 需在 PostgreSQL 啟用 `CREATE EXTENSION vector`（本機 Docker 改用 `pgvector/pgvector` image）
 - 上傳或修改規章後以 FastAPI BackgroundTasks 自動切段、向量化；失敗時 `status` 為 `failed`
 - `embedding_model` 用於換模型時找出需要重新向量化的段落；換成維度不同的模型（例如 EmbeddingGemma）時，`embedding` 欄位要一併 migration
 - multilingual-e5 系列需加前綴：規章段落用 `passage: `，使用者問題用 `query: `（instruct 版的查詢端改用模型卡指定的指令格式）
+- **`type` 決定切段策略**（新增，`app/ai/ingest.py` 依 `type` 分派）：
+  - `rule`（公司規章，預設）：沿用現有邏輯，先按空行分段，過長段落用固定長度（`max_chars=500`）＋重疊（`overlap=50`）二次切
+  - `raw`（法條）：依「第 X 條」為分界切，一條一個 chunk；單條內容超過 `max_chars` 才二次切
+  - `letter`（函文／公文）：整篇不切，一份文件一個 chunk（公文通常上下文相依、篇幅短）
+  - 這三種切段規則目前是草案，待步驟 5 的檢索測試集跑過後再確認是否需要調整
 ## 5. API
  
 | 方法 | 路徑 | 說明 | 狀態 |
 | --- | --- | --- | --- |
 | POST | `/chat` | AI 對話，所有角色可用 | 變更：改接 Modal、開放所有角色 |
 | GET | `/kb/documents` | 規章列表 | 新增 |
-| POST | `/kb/documents` | 上傳規章，回傳時 `status` 為 `processing` | 新增 |
-| PUT | `/kb/documents/{id}` | 修改規章，重新向量化 | 新增 |
+| POST | `/kb/documents` | 上傳規章，需帶 `type`（`rule`／`raw`／`letter`），回傳時 `status` 為 `processing` | 新增 |
+| PUT | `/kb/documents/{id}` | 修改規章，`title`／`content`／`type` 皆可選填更新 | 新增 |
 | DELETE | `/kb/documents/{id}` | 刪除規章與其段落 | 新增 |
 | POST | `/kb/documents/{id}/retry` | 重新向量化失敗的文件 | 新增 |
+ 
+**`PUT /kb/documents/{id}` 細節**
+ 
+- admin 限定（`require_admin`）
+- Request body：`{ title?, content?, type? }`，三者皆可選填，缺的欄位沿用原值
+- `content` 或 `type` 有變動才重新向量化：清空該文件底下所有 `kb_chunks`、`status` 改回 `processing`、`error_message` 清空，背景任務依（可能更新後的）`type` 重新切段、呼叫 embedding
+- 只改 `title` 不觸發重新向量化（不影響向量內容，省資源）
+- Response 格式同 `KbDocumentResponse`
  
 **`/chat` 格式**（維持非統一格式）
  
