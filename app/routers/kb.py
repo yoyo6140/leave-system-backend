@@ -4,9 +4,13 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import KbDocument, User
-from app.schemas import KbDocumentOut, KbDocumentCreate, KbDocumentListResponse, KbDocumentResponse, MessageResponse, ok, fail
+from app.schemas import KbDocumentOut, KbDocumentCreate, KbDocumentListResponse, KbDocumentResponse, MessageResponse,KbDocumentUpdate, ok, fail
 from app.auth import get_current_user
 from app.routers.users import require_admin
+
+from app.ai.ingest import split_into_chunks
+from app.ai.client import embed
+from app.models import KbChunk
 
 router = APIRouter(prefix="/kb", tags=["kb"])
 
@@ -34,6 +38,37 @@ def list_documents(
         "data": [KbDocumentOut.model_validate(d) for d in items],
     })
 
+def _process_document(document_id: str, content: str, doc_type: str="rule"):
+    from app.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        document = db.query(KbDocument).filter(KbDocument.id == document_id).first()
+        if not document:
+            return
+
+        chunks = split_into_chunks(content, doc_type=doc_type)
+        embeddings = embed(chunks, kind="passage")
+
+        for i, (chunk_text, vector) in enumerate(zip(chunks, embeddings)):
+            db.add(KbChunk(
+                document_id=document_id,
+                chunk_index=i,
+                content=chunk_text,
+                embedding=vector,
+                embedding_model="intfloat/multilingual-e5-large-instruct",
+            ))
+
+        document.status = "ready"
+        db.commit()
+    except Exception as e:
+        document = db.query(KbDocument).filter(KbDocument.id == document_id).first()
+        if document:
+            document.status = "failed"
+            document.error_message = str(e)
+            db.commit()
+    finally:
+        db.close()
 
 @router.post(
     "/documents",
@@ -53,7 +88,9 @@ def create_document(
 
     document = KbDocument(
         title=body.title,
+        content=body.content,
         source="manual",
+        type=body.type,
         status="processing",
         uploaded_by=current_user.id,
     )
@@ -61,13 +98,56 @@ def create_document(
     db.commit()
     db.refresh(document)
 
-    # TODO: background_tasks.add_task(process_document, document.id, body.content)
-    # process_document：切段（app/ai/ingest.py）→ 呼叫 embedding API → 寫入 kb_chunks，
-    # 成功時 status 改 ready，失敗時改 failed + error_message
-
+    background_tasks.add_task(_process_document, document.id, body.content, body.type)
     return ok(KbDocumentOut.model_validate(document))
 
 
+@router.put(
+        "/documents/{id}",
+        status_code=status.HTTP_200_OK,
+        summary="修改規章",
+        description="admin限定",
+        response_model=KbDocumentResponse
+)
+def update_document(
+    id: str,
+    body: KbDocumentUpdate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    document = db.query(KbDocument).filter(KbDocument.id == id).first()
+    if not document:
+        return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content=fail("NOT_FOUND", "找不到此規章文件"))
+    if body.content is not None and not body.content.strip():
+        return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content=fail("EMPTY_CONTENT", "內容不可為空"))
+
+    needs_revectorize = (
+        (body.content is not None and body.content != document.content) or
+        (body.type is not None and body.type != document.type)
+    )
+
+    if body.title is not None:
+        document.title = body.title
+    if body.content is not None:
+        document.content = body.content
+    if body.type is not None:
+        document.type = body.type
+
+    if needs_revectorize:
+        db.query(KbChunk).filter(KbChunk.document_id == id).delete()
+        document.status = "processing"
+        document.error_message = None
+
+
+    db.add(document)
+    db.commit()
+    db.refresh(document)
+
+    if needs_revectorize:
+        background_tasks.add_task(_process_document, document.id, document.content, document.type)
+    return ok(KbDocumentOut.model_validate(document))
+    
 
 @router.delete(
     "/documents/{id}",
@@ -88,3 +168,32 @@ def delete_document(
     db.delete(document)
     db.commit()
     return ok({"message": "規章已刪除"})
+
+@router.post(
+    "/documents/{id}/retry",
+    status_code=status.HTTP_200_OK,
+    description="admin 限定，只能對status為failed的文件使用",
+    response_model=KbDocumentResponse,
+)
+def retry_document(
+    id: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User  = Depends(require_admin) 
+):
+    document = db.query(KbDocument).filter(KbDocument.id == id).first()
+    if not document:
+        return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content=fail("NOT_FOUND", "找不到此規章文件"))
+    if document.status != "failed":
+        return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content=fail("NOT_FAILED", "只有失敗的文件才能重新向量化"))
+
+    document.status = "processing"
+    document.error_message = None
+    db.commit()
+    db.refresh(document)
+
+    background_tasks.add_task(_process_document, document.id, document.content, document.type)
+    return ok(KbDocumentOut.model_validate(document))
+
+
+    
