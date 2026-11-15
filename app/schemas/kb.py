@@ -6,6 +6,7 @@ class KbDocumentOut(BaseModel):
     id:            str
     title:         str
     source:        str
+    type:          str
     status:        str
     error_message: str | None = None
     uploaded_by:   int
@@ -34,7 +35,9 @@ class KbDocumentResponse(BaseModel):
 class KbDocumentCreate(BaseModel):
     title:   str
     content: str
+    type:    str  = "rule"
 
 class KbDocumentUpdate(BaseModel):
     title: str | None = None
     content: str | None = None
+    type:    str | None = None
