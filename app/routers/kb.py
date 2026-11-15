@@ -38,7 +38,7 @@ def list_documents(
         "data": [KbDocumentOut.model_validate(d) for d in items],
     })
 
-def _process_document(document_id: str, content: str):
+def _process_document(document_id: str, content: str, doc_type: str="rule"):
     from app.database import SessionLocal
 
     db = SessionLocal()
@@ -47,7 +47,7 @@ def _process_document(document_id: str, content: str):
         if not document:
             return
 
-        chunks = split_into_chunks(content)
+        chunks = split_into_chunks(content, doc_type=doc_type)
         embeddings = embed(chunks, kind="passage")
 
         for i, (chunk_text, vector) in enumerate(zip(chunks, embeddings)):
@@ -90,6 +90,7 @@ def create_document(
         title=body.title,
         content=body.content,
         source="manual",
+        type=body.type,
         status="processing",
         uploaded_by=current_user.id,
     )
@@ -97,7 +98,7 @@ def create_document(
     db.commit()
     db.refresh(document)
 
-    background_tasks.add_task(_process_document, document.id, body.content)
+    background_tasks.add_task(_process_document, document.id, body.content, body.type)
     return ok(KbDocumentOut.model_validate(document))
 
 
@@ -121,12 +122,17 @@ def update_document(
     if body.content is not None and not body.content.strip():
         return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content=fail("EMPTY_CONTENT", "內容不可為空"))
 
-    needs_revectorize = body.content is not None and body.content != document.content
+    needs_revectorize = (
+        (body.content is not None and body.content != document.content) or
+        (body.type is not None and body.type != document.type)
+    )
 
     if body.title is not None:
         document.title = body.title
     if body.content is not None:
         document.content = body.content
+    if body.type is not None:
+        document.type = body.type
 
     if needs_revectorize:
         db.query(KbChunk).filter(KbChunk.document_id == id).delete()
@@ -139,7 +145,7 @@ def update_document(
     db.refresh(document)
 
     if needs_revectorize:
-        background_tasks.add_task(_process_document, document.id, body.content)
+        background_tasks.add_task(_process_document, document.id, document.content, document.type)
     return ok(KbDocumentOut.model_validate(document))
     
 
@@ -186,7 +192,7 @@ def retry_document(
     db.commit()
     db.refresh(document)
 
-    background_tasks.add_task(_process_document, document.id, document.content)
+    background_tasks.add_task(_process_document, document.id, document.content, document.type)
     return ok(KbDocumentOut.model_validate(document))
 
 
