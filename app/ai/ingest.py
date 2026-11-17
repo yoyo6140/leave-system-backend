@@ -17,7 +17,7 @@ def split_into_chunks( text: str, max_chars: int = 500, overlap: int = 50, doc_t
     if doc_type == "letter":
         candidates = [text.strip()]
     elif doc_type == "raw":
-        candidates = [p.strip() for p in re.split(r'(?=第\s*[一二三四五六七八九十0-9]+\s*條)', text) if p.strip()]
+        candidates = [p.strip() for p in re.split(r'(?=^第\s*\d+\s*條)', text, flags=re.MULTILINE) if p.strip()]
     else:
         candidates = [p.strip() for p in text.split("\n\n") if p.strip()]
 

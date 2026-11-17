@@ -112,9 +112,33 @@
 
 **踩的坑**：`type` 覆蓋欄位的順序一開始寫反了（跟 `content` 一樣的錯：先覆蓋再比較，導致 `needs_revectorize` 永遠判斷不出 `type` 變了），修正後統一在比較完才覆蓋。
 
-**還沒做**：
+**還沒做**（截至本節）：
 - `type` 功能還沒經過完整流程實測——只單獨測過 `split_into_chunks`（`test_ingest.py`），沒有真的用 Swagger UI 跑過 `POST /kb/documents` 帶 `type="raw"`/`"letter"`，確認背景任務產出的 `kb_chunks` 正確
 - `create_document`/`update_document` 沒有驗證 `body.type` 是否為 `rule`/`raw`/`letter` 合法值，打錯字串會被存進去、切段時悄悄當成 `rule` 處理
 - `leave-system-inference`：已 `modal deploy` 正式部署（固定 prod 網址），決定先不做 dev/prod 分環境、不分 key（共用同一組 `embedding-api-key`），之後真的需要再補
 - Render 環境變數：`EMBEDDING_BASE_URL`/`EMBEDDING_API_KEY` 還沒補進 `render.yaml` 或 Render 後台——Modal prod 網址已經有了，這件事已經解鎖，可以回來處理
 - 規格第 6 節步驟 5：準備 20~30 題檢索測試問題集，驗證正確段落有沒有落在前 5 名
+
+## cf4c4e3 — feat: embed() 依 Modal 的 MAX_BATCH 限制自動分批呼叫
+
+**問題**：`app/ai/client.py` 的 `embed()` 原本一次把所有 chunk 送給 Modal，但 `leave-system-inference` 的 `embedding_app.py` 限制 `MAX_BATCH=64`，超過會收到 422。上傳完整法規全文（勞基法 86 條，切完接近或超過 64 個 chunk）會直接失敗。
+
+**做了什麼**：
+- `embed()` 改成用 `range(0, len(texts), BATCH_SIZE)` 把 `texts` 切成每批 ≤64 筆，逐批呼叫 Modal，用 `embeddings.extend(...)` 依序接起來，確保跟原始 chunk 順序一致（後面 `_process_document` 要靠順序 `zip(chunks, embeddings)` 配對）
+- 考慮過直接調大 Modal 那邊的 `MAX_BATCH`，但那只是把上限往後移、沒解決根本問題，而且要重新 `modal deploy` 動到剛穩定的 prod，所以選擇在 backend 端做分批
+
+## （本次未附 commit hash，待補）— 驗證 type="raw" 完整流程，補齊規格步驟 5 測試集
+
+**背景**：為了用真實資料測試 `type="raw"` 跟檢索品質，從全國法規資料庫複製勞動基準法全文（86 條），過程中踩了不少坑：
+
+1. **Swagger UI 貼多行文字會 JSON decode error**：直接在 JSON 輸入框貼有換行的全文，換行沒轉義導致格式壞掉。改寫 `app/ai/upload_law.py`：讀本機 `.txt` 檔、呼叫 `/auth/login` 拿 token、用 `httpx` 的 `json=` 參數自動處理轉義，繞過手動編輯 JSON 的問題。
+2. **`EMBEDDING_BASE_URL` 指向過期的 `modal serve` 網址**：忘記 `.env` 改完要重啟 `uvicorn`（`client.py` 的環境變數是模組載入時讀一次，不會自動重讀），Docker 版本則是「容器啟動時」讀 `env_file`，改完 `.env` 也要重新 `docker compose up` 才會生效。
+3. **`raw` 切段正則把條文內文裡提到的條號也當成切點**：原正則 `第[一二三四五六七八九十0-9]+條` 沒限定位置，導致「第三十六條所定之例假…」這種**內文引用**（中文數字、無空格、非行首）被誤判成新條文開頭，把第 39 條切碎。改成 `r'(?=^第\s*\d+\s*條)'` 搭配 `flags=re.MULTILINE`，限定「只有在行首、且為阿拉伯數字」才算切點，修好後第 39 條維持完整一段。
+   - **已知殘留限制**：帶橫線的增訂條文（如「第 9-1 條」）不符合 `\d+\s*條`（中間多了 `-1`），不會被獨立切開，會黏在前一條尾巴——測試後發現這不影響檢索（內容還在，只是切得比較粗），先不處理。
+
+**做了什麼**：
+- 新增 `app/ai/upload_law.py`（一次性上傳工具腳本）
+- 修正 `app/ai/ingest.py` 的 `raw` 切段正則
+- 新增 `app/ai/test_retrieval_suite.py`：25 題測試問題（對應規格第 6 節步驟 5），每題驗證預期條號有沒有出現在 `top_5` 結果裡，印出命中率跟未命中清單
+- 實測結果：**25/25 全過，`top_5` 命中率 100%**（含 3 題故意測「帶橫線條文」的邊界情況）
+- 規格第 6 節步驟 5 完成，檢索品質已驗證，可以進入步驟 6（部署 Gemma 4）
