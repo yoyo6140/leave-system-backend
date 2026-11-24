@@ -142,3 +142,27 @@
 - 新增 `app/ai/test_retrieval_suite.py`：25 題測試問題（對應規格第 6 節步驟 5），每題驗證預期條號有沒有出現在 `top_5` 結果裡，印出命中率跟未命中清單
 - 實測結果：**25/25 全過，`top_5` 命中率 100%**（含 3 題故意測「帶橫線條文」的邊界情況）
 - 規格第 6 節步驟 5 完成，檢索品質已驗證，可以進入步驟 6（部署 Gemma 4）
+
+## 0006e4d — docs: 更改策略（對話生成改回 Gemini，embedding 繼續用 Modal）
+
+對應 `doc/spec/ai-service.md` 2026-11-24 決策變更。詳細理由見該文件第 1、3 節：自架 Gemma 4（vLLM）實測可行，但 L4 GPU 常排隊、常駐成本約 $575/月，對低流量內部系統不划算，改成混合架構——embedding 維持 Modal，對話生成改回 Gemini（原本就有的整合，不移除），但接上 RAG 檢索結果。跳過規格原訂的步驟 6、6.5（部署並比較自架對話模型）。
+
+## （本次未附 commit hash，待補）— 對應規格第 6 節步驟 7：`/chat` 改接「檢索 + Gemini」，附 `sources`
+
+**做了什麼**：
+- `app/routers/chat.py` 的 `chat()` 新增 `db: Session = Depends(get_db)` 依賴，用最後一則 user 訊息呼叫 `app/ai/retrieval.search(db, query, top_k=5)` 做向量檢索
+- 檢索到的段落組成 `context_text`，動態接在 `_SYSTEM_PROMPT` 後面組出 `system_prompt`（取代原本固定的 `_SYSTEM_PROMPT`），並明確要求「只根據段落回答，不要編造，段落不足就說沒有足夠資訊」
+- `ChatResponse` 新增 `sources: list[ChatSource]`（`document_id`/`title`/`chunk_index`），`retrieved` 轉換 key 名稱（`document_title` → `title`）後隨 `reply` 一起回傳
+- `.env.example` 補上 `GEMINI_API_KEY` 的佔位行（先前漏掉；決策變更後明確「繼續使用」，不是新需求但一直沒補）
+
+**實測**：
+- 問勞基法有涵蓋的問題：正確根據檢索段落回答，`sources` 有列出對應的 `document_id`/`chunk_index`
+- 問完全跟請假無關的問題（如「員工旅遊補助金額」）：被 `_SYSTEM_PROMPT` 原有的「超出請假範疇」規則擋下，禮貌拒答
+- 問屬於請假範疇但知識庫沒涵蓋的問題（如「病假要附診斷書嗎」）：正確回答沒有足夠資訊，沒有自己編造公司規定
+
+**踩的坑**：`.env` 的 `GEMINI_API_KEY` 不知何時被複製貼上壞了——重複兩行，且值是 `AQ.` 開頭（OAuth access token 格式），不是 Google AI Studio 真正的 API key 格式（應為 `AIzaSy` 開頭），導致 `/chat` 一律回 401 `ACCESS_TOKEN_TYPE_UNSUPPORTED`。到 https://aistudio.google.com/app/apikey 重新取得正確格式的 key、清掉重複行後解決。
+
+**還沒做**：
+- `sources` 沒有去重——同一份文件若有多個 chunk 被檢索到，會重複列出同一個 `document_id`
+- 檢索沒有相關度門檻，距離太遠的不相關段落仍會被塞進 prompt（目前靠 system prompt 的指示擋住亂答，沒有在檢索層過濾）
+- 規格第 6 節步驟 8（前端串接、顯示引用來源）、步驟 9～10（2-B 工具呼叫，`app/ai/tools.py` 尚未建立）
