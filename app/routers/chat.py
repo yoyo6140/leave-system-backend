@@ -7,6 +7,11 @@ from pydantic import BaseModel
 from app.auth import get_current_user
 from app.models import User
 
+from sqlalchemy.orm import Session
+
+from app.database import get_db
+from app.ai.retrieval import search
+
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 _SYSTEM_PROMPT = """你是請假管理系統的 AI 助理，使用繁體中文回覆，語氣專業且友善。
@@ -27,8 +32,15 @@ class ChatRequest(BaseModel):
     messages: list[ChatMessage]
 
 
+class ChatSource(BaseModel):
+    document_id: str
+    title: str
+    chunk_index: int
+
+
 class ChatResponse(BaseModel):
     reply: str
+    sources: list[ChatSource] = []
 
 
 @router.post(
@@ -47,6 +59,7 @@ class ChatResponse(BaseModel):
 )
 def chat(
     body: ChatRequest,
+    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     api_key = os.getenv("GEMINI_API_KEY", "")
@@ -68,12 +81,25 @@ def chat(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="最後一則訊息必須來自 user",
         )
+    retrieved = search(db, body.messages[-1].content, top_k=5)
+    if retrieved:
+        context_text = "\n\n".join(
+            f"【{c['document_title']}】{c['content']}" for c in retrieved
+        )
+    else:
+        context_text = "(沒有檢索到相關的規章段落)"
+
+    system_prompt = _SYSTEM_PROMPT + f"""
+
+以下是跟使用者問題相關的規章段落，回答時請只根據這些段落的內容，不要自己編造或引用段落以外的資訊。如果段落內容不足以回答，請直接說明你沒有足夠的資訊：
+
+{context_text}"""
 
     try:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel(
             model_name="gemini-2.5-flash",
-            system_instruction=_SYSTEM_PROMPT,
+            system_instruction=system_prompt,
         )
 
         # history = 所有訊息（不含最後一則）
@@ -86,7 +112,15 @@ def chat(
         session  = model.start_chat(history=history)
         response = session.send_message(user_input)
 
-        return ChatResponse(reply=response.text)
+        sources = [
+            {
+                "document_id": c["document_id"],
+                "title": c["document_title"],
+                "chunk_index": c["chunk_index"],
+            }
+            for c in retrieved
+        ]
+        return ChatResponse(reply=response.text, sources=sources)
 
     except HTTPException:
         raise
