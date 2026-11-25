@@ -32,6 +32,15 @@ class KbDocumentResponse(BaseModel):
     success: bool = True
     data: KbDocumentOut
 
+
+class KbDocumentDetail(KbDocumentOut):
+    content: str
+
+
+class KbDocumentDetailResponse(BaseModel):
+    success: bool = True
+    data: KbDocumentDetail
+
 class KbDocumentCreate(BaseModel):
     title:   str
     content: str

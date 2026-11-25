@@ -16,6 +16,10 @@ services:
         value: "none"
       - key: GEMINI_API_KEY
         sync: false
+      - key: EMBEDDING_BASE_URL
+        sync: false
+      - key: EMBEDDING_API_KEY
+        sync: false
       - key: MAIL_USERNAME
         sync: false
       - key: MAIL_PASSWORD

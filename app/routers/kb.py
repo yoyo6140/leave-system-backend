@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import KbDocument, User
-from app.schemas import KbDocumentOut, KbDocumentCreate, KbDocumentListResponse, KbDocumentResponse, MessageResponse,KbDocumentUpdate, ok, fail
+from app.schemas import KbDocumentOut, KbDocumentCreate, KbDocumentListResponse, KbDocumentResponse, MessageResponse,KbDocumentUpdate, ok, fail, KbDocumentDetail, KbDocumentDetailResponse
 from app.auth import get_current_user
 from app.routers.users import require_admin
 
@@ -37,6 +37,24 @@ def list_documents(
         "limit": limit,
         "data": [KbDocumentOut.model_validate(d) for d in items],
     })
+
+@router.get(
+    "/documents/{id}",
+    status_code=status.HTTP_200_OK,
+    summary="查詢單一規章文件（含原始內容）",
+    description="所有角色可查看，編輯前用來取得完整 content",
+    response_model=KbDocumentDetailResponse,
+)
+def get_document(
+    id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    document = db.query(KbDocument).filter(KbDocument.id == id).first()
+    if not document:
+        return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content=fail("NOT_FOUND", "找不到此規章文件"))
+    return ok(KbDocumentDetail.model_validate(document))
+
 
 def _process_document(document_id: str, content: str, doc_type: str="rule"):
     from app.database import SessionLocal
