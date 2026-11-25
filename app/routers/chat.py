@@ -81,11 +81,21 @@ def chat(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="最後一則訊息必須來自 user",
         )
-    retrieved = search(db, body.messages[-1].content, top_k=5)
+    # 檢索失敗（例如 Modal embedding 服務冷啟動逾時）不應該讓整個 /chat 掛掉，
+    # 退化成「沒有檢索到段落」繼續用 Gemini 回答，並讓它知道是服務問題而非真的沒有相關規定
+    try:
+        retrieved = search(db, body.messages[-1].content, top_k=5)
+        retrieval_failed = False
+    except Exception:
+        retrieved = []
+        retrieval_failed = True
+
     if retrieved:
         context_text = "\n\n".join(
             f"【{c['document_title']}】{c['content']}" for c in retrieved
         )
+    elif retrieval_failed:
+        context_text = "（規章檢索服務暫時無法使用，請明確告知使用者這是系統暫時性問題、建議稍後再試，不要自己編造規章內容）"
     else:
         context_text = "(沒有檢索到相關的規章段落)"
 

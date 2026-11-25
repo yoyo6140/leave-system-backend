@@ -1,12 +1,13 @@
 from datetime import date, datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
 from app.database import get_db
 from app.models import User, LeaveRecord
-from app.schemas import ok
+from app.schemas import ok, fail
 from app.schemas.overview import OverviewResponse, MonthlyLeaveStatsResponse
 
 router = APIRouter(prefix="/overview", tags=["overview"])
@@ -61,7 +62,7 @@ def get_overview(
     current_user: User = Depends(get_current_user),
 ):
     if current_user.role not in MANAGER_ROLES:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="權限不足")
+        return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content=fail("FORBIDDEN", "權限不足"))
 
     now = date.today()
     month_start_dt = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
@@ -137,7 +138,7 @@ def get_leave_count_monthly(
     current_user: User = Depends(get_current_user),
 ):
     if current_user.role not in MANAGER_ROLES:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="權限不足")
+        return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content=fail("FORBIDDEN", "權限不足"))
 
     target_year = year or date.today().year
 
